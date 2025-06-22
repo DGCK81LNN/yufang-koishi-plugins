@@ -1,5 +1,5 @@
-import { Computed, Context, Schema, Session, User, h, escapeRegExp, Universal } from 'koishi'
-import * as what from './whatlang_interpreter'
+import { Argv, Computed, Context, Schema, Session, User, h, escapeRegExp, Universal, Observed } from 'koishi'
+import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
 
@@ -7,12 +7,16 @@ import { } from '@koishijs/cache'
 export const name = 'whatlang'
 export interface Config {
     requireAppel: Computed<boolean>,
+    interpolate: boolean,
+    interpolateCmd: boolean,
 }
 export const Config = Schema.object({
     requireAppel: (Schema
         .computed(Boolean).default(false)
         .description("在群聊中，使用倒问号快捷方式是否必须 @ bot 或开头带昵称。")
     ),
+    interpolate: Schema.boolean().description("启用“`$¿{ }`”插值。"),
+    interpolateCmd: Schema.boolean().description("启用“`$¿( )`”What Commands 插值。"),
 })
 export const inject = ["database", "cache", "puppeteer"]
 
@@ -22,6 +26,9 @@ declare module 'koishi' {
         whatnoter: WhatNoter,
         whattimer: WhatTimer,
         whatcommands: WhatCommands,
+    }
+    interface Events {
+        "whatlang/run"(code: string, session: Session): void,
     }
 }
 export interface WhatNoter {
@@ -38,6 +45,7 @@ export interface WhatTimer {
 export interface WhatCommands {
     name: string,
     help: string,
+    h: string,
     code: string,
 }
 
@@ -68,15 +76,16 @@ async function getMemberList(session: Session, gid: string) {
 
 
 const formatting : Function = (x: any) => typeof x == "string" ? x : what.formatting(x)
-const msgtoarr : Function = (x: any) => [
-    x.content, x.messageId ?? x.id,
-    x.event.user.name ?? x.user?.name, x.userId, x.user?.id,
-    x.channel?.id, x.quote?.id,
+const sessiontoarr : Function = (x: Session) => msgtoarr(x.event, x.user)
+const msgtoarr : Function = (x: Universal.Event, user?: Observed<User, ["id"]>) => [
+    x.message?.content, x.message?.id,
+    x.user?.name, x.user?.id, user?.id,
+    x.channel?.id, x.message?.quote?.id,
 ]
 const htmlize : Function = (x : any, style : Record<string, any> = {
     padding: "5px",
     "max-width": "96ch",
-    "font-family": "Consolas",
+    "font-family": "monospace",
     "overflow-wrap": "break-word",
     "white-space": "break-spaces",
 }) => h("html", {}, [h("div", {style: style}, [formatting(x)])])
@@ -88,14 +97,29 @@ const svglize : Function = (x : any) => h(
         ""
     ))
 ))
+function headersArrToObj(pairs: any) {
+    const headers = {}
+    for (let [key, value] of pairs) {
+        key = formatting(key)
+        value = formatting(value)
+        if (Object.hasOwn(headers, key)) headers[key] += ", " + value
+        else headers[key] = value
+    }
+    return headers
+}
 const run_what = async (code : string, session : Session) => {
     let output : (h | string)[] = []
-    let stack : any = await what.eval_what(
-        code, [[]], 
+    let time : number = Date.now()
+    let disp = session.app.setInterval(() => time = Date.now(), 100)
+    let dead_loop_check : () => void = () => {
+        if (Date.now() - time > 5000) throw new Error("Execution timeout")
+    }
+    await what.eval_what(
+        code, [[]],
         Object.assign({
             help: (x : any) => help(x),
             helpall: (x : any) => void output.push(htmlize(help_list.reduce(
-                (last : any, n : any, i : number) => last + n + ((i + 1) % 8 ? " ".repeat(10 - n.length) : "\n"), ""
+                (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
             ))),
             pr: async () => session.prompt(),
             propt: async (x : any) => {
@@ -110,7 +134,7 @@ const run_what = async (code : string, session : Session) => {
                                 !(Array.isArray(x) && x.includes(session2.userId))
                             ) return next()
                             clearTimeout(timeout)
-                            res(msgtoarr(session2))
+                            res(sessiontoarr(session2))
                             dispose()
                         })
                     )
@@ -136,7 +160,7 @@ const run_what = async (code : string, session : Session) => {
                                 session2.channelId != x &&
                                 !(Array.isArray(x) && x.includes(session2.channelId))
                             ) return next()
-                            let temp : any[] = msgtoarr(session2)
+                            let temp : any[] = sessiontoarr(session2)
                             let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, y])], v, o)
                             if (!temp2 && !Number.isNaN(temp2)) return next()
                             clearTimeout(timeout)
@@ -151,7 +175,7 @@ const run_what = async (code : string, session : Session) => {
                     return
                 })
             },
-            me: () => msgtoarr(session),
+            me: () => sessiontoarr(session),
 /*
             getuser: async (x : any) => {
                 let user : any = await session.bot.getUser(x)
@@ -166,7 +190,7 @@ const run_what = async (code : string, session : Session) => {
             outfile: (x : any) => void output.push(h.file(x)),
             outquote: (x : any) => void output.push(h.quote(x)),
             outat: (x : any) => void output.push(h.at(x)),
-            outhtml: (x : any) => void output.push(htmlize(x)),
+            outimag: (x : any) => void output.push(htmlize(x)),
             outksq: (x : any) => void output.push(htmlize(x, {
                 "line-height": "1",
                 "font-family": "Kreative Square",
@@ -186,9 +210,29 @@ const run_what = async (code : string, session : Session) => {
                 return true
             })},
 */
-            cat: async (x : any) => {
-                try {return await session.app.http.get(String(x), {responseType: "text"})}
-                catch (err) {session.send(String(err)); return}
+            cat: async (x : any) => await session.app.http.get(String(x), {responseType: "text"}),
+            ca: async x => [...new Uint8Array(await session.app.http.get(String(x), { responseType: "arraybuffer" }))],
+            fetch: async (method: any, url: any, headers: any, data: any) => {
+                const resp = await session.app.http(url, {
+                    method,
+                    headers: headersArrToObj(headers),
+                    data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                    responseType: "text",
+                    validateStatus: () => true,
+                    redirect: "manual",
+                })
+                return [resp.status, resp.statusText, [...resp.headers], resp.data]
+            },
+            fech: async (method: any, url: any, headers: any, data: any) => {
+                const resp = await session.app.http(url, {
+                    method,
+                    headers: headersArrToObj(headers),
+                    data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                    responseType: "arraybuffer",
+                    validateStatus: () => true,
+                    redirect: "manual",
+                })
+                return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
             },
             reesc: (x : any) => escapeRegExp(x),
             getmsg: async (
@@ -197,25 +241,32 @@ const run_what = async (code : string, session : Session) => {
                 v : Record<string, any>,
                 o : (x : any) => void,
             ) => {
-                for await (let i of session.bot.getMessageIter(session.channelId)) {
-                    let temp : any[] = msgtoarr(i)
+                for await (let message of session.bot.getMessageIter(session.channelId)) {
+                    let temp : any[] = msgtoarr({ ...message, message }, await session.app.database.getUser(session.platform, message.user.id).catch(() => null))
                     let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
                     if (temp2 || Number.isNaN(temp2)) return temp
                 }
             },
-            msgbyid: async (x : any, y : any) => await msgtoarr(session.bot.getMessage(x || session.channelId, y)),
+            msgbyid: async (x : any, y : any) => {
+                const message = await session.bot.getMessage(x || session.channelId, y)
+                return msgtoarr({ ...message, message }, await session.app.database.getUser(session.platform, message.user.id).catch(() => null))
+            },
             sleep: async (x : any) => void await new Promise((res) => setTimeout(res, x * 1000)),
             notewc: async (x : any, y : any) => void await session.app.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
             notewd: async (x : any) => void await session.app.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
             notewe: async (x : any) => void await session.app.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
-            noterc: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public,
-            noterd: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected,
-            notere: async () => (await session.app.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private,
+            noterc: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
+            noterd: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
+            notere: async () => (await session.app.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
             guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x)).map(i => [i.user.name, i.user.id]),
             cmdset: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, code: x}], "name"),
-            cmdall: async (x : any, y : any) => (await session.app.database.get("whatcommands", {}, ["name"])).map(i => i.name),
-            //cmdsethelp: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, help: x}], "name"),
+            cmdall: async () => (await session.app.database.get("whatcommands", {}, ["name"])).map(i => i.name),
+            cmdsethelp: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, help: x}], "name"),
+            cmdseth: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, h: x}], "name"),
             cmddel: async (x : any) => void await session.app.database.remove("whatcommands", {name: x}),
+            cmdget: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
+            cmdgethelp: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
+            cmdgeth: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
             cmd: async (
                 x : any, y : any,
                 s : any[][],
@@ -223,12 +274,14 @@ const run_what = async (code : string, session : Session) => {
                 o : (x : any) => void,
             ) => {
                 let temp : string = (await session.app.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
-                if (temp == undefined) return undefined
-                return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o)
+                if (temp == undefined) throw new Error("command not found")
+                return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o, { dead_loop_check }) ?? null
             },
+
         }, what.default_var_dict),
         (x : any) => void output.push(h.text(x)),
-    )
+        { dead_loop_check }
+    ).finally(() => disp())
     return output
 }
 what.need_svo.push(..."prompt getmsg cmd".split(" "))
@@ -253,6 +306,7 @@ export function apply(ctx : Context, config: Config) {
     ctx.model.extend("whatcommands", {
         name: "string",
         help: "text",
+        h: "text",
         code: "text",
     }, {primary: "name"})
 
@@ -267,7 +321,7 @@ export function apply(ctx : Context, config: Config) {
         ctx.cache.delete(`whatlang_members_${session.gid}`, session.userId)
     })
 
-    ctx.command("whatlang <code:rawtext>", "运行 WhatLang 代码")
+    ctx.command("whatlang <code:text>", "运行 WhatLang 代码")
         .usage(h.escape(
             "可直接用 '¿<code...>' 代替\n" +
             "输入 '¿help@.' 获取帮助"
@@ -278,23 +332,99 @@ export function apply(ctx : Context, config: Config) {
         .example(h.escape("¿ 0x=_ 10n=_ 1.:{` `:x^+.\\x=_n^1-n=}"))
         .example(h.escape('¿ (http://spiderbuf.cn) link= (/s05)+ cat@ [((?<=<img.*?src=").*?(?=".*?>))g]match@ (link^ \+ outimg@send@)#'))
 */
-        .action(({ session }, code) => try_run_what(code, session))
-    ctx.command("whatcmd <name> <arg:rawtext>", "调用 What Commands 的指令")
+        .action(({ session }, code) => {
+            ctx.emit(session, "whatlang/run", code, session)
+            return try_run_what(code, session)
+        })
+    ctx.command("whatcmd <name> <arg:text>", "调用 What Commands 的指令", { strictOptions: true, captureQuote: false })
         .usage(h.escape(
             "可直接用 '¿¿<name> <arg...>' 代替"
         ))
-        .action(({ session }, name, arg) => try_run_what(`${name} ${arg} cmd@`, session))
+        .action(({ root, session }, name, arg) => {
+            name ||= ""
+            arg ||= ""
+            if (root && session.quote?.content) {
+                if (arg.match(/\S$/)) arg += " "
+                arg += h.unescape(session.quote.content)
+            }
+            const code = `"${arg.replace(/(["\\])/g, "\\$1")}" "${name.replace(/(["\\])/g, "\\$1")}" cmd@`
+            ctx.emit(session, "whatlang/run", code, session)
+            return try_run_what(code, session)
+        })
 
     ctx.middleware(async (session, next) => {
+        if (session.stripped.hasAt && !session.stripped.atSelf) return next()
         if (!session.isDirect && session.resolve(config.requireAppel) && !session.stripped.appel) return next()
-        let content : string = h.select(session.stripped.content, "text").map(e => e.attrs.content).join("")
+        let content : string = h.unescape(session.stripped.content)
         if (content.startsWith("¿¿")) {
-            let temp : string = content.slice(2)
-            let temp0 : number = temp.indexOf(" ")
-            let temp1 : string = '"' + (temp0 == -1 ? temp : temp.slice(1+ temp0)).replace(/(["\\])/g, "\\$1") + '"'
-            let temp2 : string = '"' + (temp0 == -1 ? temp : temp.slice(0, temp0)).replace(/(["\\])/g, "\\$1") + '"'
-            return await try_run_what(`${temp1} ${temp2} cmd@`, session)
-        } else if (content.startsWith("¿")) return await try_run_what(content.slice(1), session)
+            let wcmd : string = content.slice(2)
+            let space_pos : number = wcmd.indexOf(" ")
+            let arg : string = space_pos == -1 ? "" : wcmd.slice(1 + space_pos)
+            let name : string = space_pos == -1 ? wcmd : wcmd.slice(0, space_pos)
+            let argv : Argv = Argv.parse(`whatcmd `)
+            argv.tokens.push({ inters: [], content: name, quoted: true, terminator: " " })
+            // Workaround for https://github.com/koishijs/koishi/issues/1473
+            argv.tokens.push({ inters: [], content: "", quoted: true, terminator: "" })
+            argv.tokens.push(...Argv.parse(h.escape(arg)).tokens.map(token => ({ ...token, quoted: true })))
+            if (session.quote?.content) {
+                if (argv.tokens.length > 3) argv.tokens.at(-1).terminator ||= " "
+                argv.tokens.push({ inters: [], content: session.quote.content, quoted: true, terminator: "" })
+            }
+            return session.execute(argv)
+        } else if (content.startsWith("¿")) {
+            ctx.emit(session, "whatlang/run", content.slice(1), session)
+            return await try_run_what(content.slice(1), session)
+        }
         return next()
     })
+
+    if (config.interpolate) {
+        Argv.interpolate('$¿{', '}', (raw) => {
+            ctx.logger.debug("interpolate", raw)
+            let i = -1, level = 0, parenLevel = 0, dblQuote = false
+            while (++i < raw.length - 1) {
+                let c = raw[i]
+                if (!parenLevel && !dblQuote && c === "{") {
+                    level++
+                } else if (!parenLevel && !dblQuote && c === "}") {
+                    if (!level) break
+                    level--
+                } else if (!dblQuote && c === "(") {
+                    parenLevel++
+                } else if (parenLevel && !dblQuote && c === ")") {
+                    parenLevel--
+                } else if (!parenLevel && c === '"') {
+                    dblQuote = !dblQuote
+                } else if (!parenLevel && c === "'") {
+                    i++
+                }
+            }
+            const source = raw.slice(0, i)
+
+            return {
+                source,
+                command: ctx.command("whatlang"),
+                args: [h.unescape(source)],
+                rest: raw.slice(i + 1),
+            }
+        })
+    }
+
+    if (config.interpolateCmd) {
+        Argv.interpolate('$¿(', ')', (raw) => {
+            ctx.logger.debug("interpolateCmd", raw)
+            const i = raw.indexOf(")")
+            const source = raw.slice(0, i)
+            const unescapedSource = h.unescape(source)
+            const cmdName = unescapedSource.split(" ")[0]
+            const cmdArgs = unescapedSource.slice(cmdName.length + 1)
+
+            return {
+                source,
+                command: ctx.command("whatcmd"),
+                args: [cmdName, cmdArgs],
+                rest: raw.slice(i + 1),
+            }
+        })
+    }
 }

@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-whatlang",
-  "description": "what?",
-  "version": "0.0.2",
+  "description": "WhatLang Koishi runtime",
+  "version": "0.1.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -16,5 +16,24 @@
   ],
   "peerDependencies": {
     "koishi": "^4.16.6"
+  },
+  "devDependencies": {
+    "@koishijs/cache": "^2.1.0"
+  },
+  "dependencies": {
+    "whatlang-interpreter": "^0.2.0"
+  },
+  "koishi": {
+    "description": {
+      "zh": "[WhatLang](https://esolangs.org/wiki/WhatLang) Koishi 运行时",
+      "en": "[WhatLang](https://esolangs.org/wiki/WhatLang) Koishi runtime"
+    },
+    "service": {
+      "required": [
+        "database",
+        "cache",
+        "puppeteer"
+      ]
+    }
   }
 }

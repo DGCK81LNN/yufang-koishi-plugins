@@ -41,10 +41,11 @@ const help_record : Record<string, string> = ({
         `输出栈顶。`
         `和 send@ 配合会有奇效。`
     ()),
-    ": \\ _": (S
+    ": \\ & _": (S
         `栈操作之类的，偶尔会有点用。`
         `    : 复制栈顶值`
         `    \\ 交换栈顶二值`
+        `    & 将栈顶移到栈底`
         `    _ 弹出，并炸至金黄酥脆（嗯？）`
     ()),
     "< >": (S
@@ -71,7 +72,7 @@ const help_record : Record<string, string> = ({
     ()),
     "str repr": (S
         `如果你学过 python 的话……`
-        `    str 弹出，返回该值的字符串表示（除非是个 char 数组）`
+        `    str 弹出，返回该值的字符串表示（除非它本来就是字符串）`
         `    repr 弹出，返回一个执行后大致上是这个值的字符串`
     ()),
     arr: (S
@@ -79,6 +80,10 @@ const help_record : Record<string, string> = ({
     ()),
     pow: (S
         `弹出二值，返回 底值 ** 顶值。`
+    ()),
+    "sin cos tan asin acos atan": (S
+        `弹出，返回其三角函数值。`
+        `还需要我再具体点吗？`
     ()),
     "band bor bxor bnot": (S
         `弹出二值，进行位运算，返回结果。`
@@ -91,7 +96,7 @@ const help_record : Record<string, string> = ({
     ()),
     flr: (S
         `弹出，返回 Math.floor(该值)`
-        `什么天花板很圆啊，我们只有 1+flr@ 和 (0.5)num@+flr@，你在说什么啊？`
+        `什么天花板很圆啊，我们只有 0\-flr@0\- 和 (0.5)num@+flr@，你在说什么啊？`
     ()),
     range: (S
         `弹出，返回 [0, 1, 2, 3... 该值 - 2, 该值 - 1]。`
@@ -99,7 +104,7 @@ const help_record : Record<string, string> = ({
     ()),
     split: (S
         `弹出二值，返回 (底值的字符串表示).split(顶值)。`
-        `对于 Array.prototype.split，请使用 range@(...)#。`
+        `顶值现在支持 match@ 那样的正则表达式。`
     ()),
     "len join reverse in": (S
         `更多的数组操作。我们为什么需要这些？`
@@ -173,18 +178,26 @@ const help_record : Record<string, string> = ({
         `返回该消息的信息。`
         `呃不，不是我，是你。`
     ()),
-    cat: (S
-        `弹出，当作 URL 获取文本并返回。`
-        `如果你实在闲着，试试配合 match@ 写个爬虫？`
+    "cat ca fetch fech": (S
+        `HTTP 请求。如果你实在闲着，试试配合 match@ 写个爬虫？`
+        `这里本来只有 cat，剩下都是我(LNN)加的。`
+        `    cat 弹出，当作 URL 获取文本并返回。`
+        `    ca 弹出，当作 URL 获取字节数组并返回。`
+        `    fetch 弹出四值，从底至顶依次为请求方法、URL、请求头键值对数组、请求体，_`
+        `发送 HTTP 请求后返回 [状态码 状态名称 响应头键值对数组 响应体文本]。_`
+        `请求体可以是 undefined、字符串或字节数组。`
+        `    fech 同上但是响应体换成字节数组。`
     ()),
-    "outimg outaudio outvideo outfile outquote outhtml outksq": (S
+    "outimg outaudio outvideo outfile outquote outimag outksq outsvg": (S
         `适用于你需要一点什么图的情景。`
         `配合 send@ 也许会更好用？`
         `    outimg 弹出，输出 h.image(该值)`
         `    outaudio 弹出，输出 h.audio(该值)`
         `    outvideo outfile outquote... `
-        `    outhtml 弹出，以 Consolas 字体显示为图片并输出`
+        `    outimag 弹出，以等宽字体显示为图片并输出`
         `    outksq 弹出，以 Kreative Square 字体显示为图片并输出`
+        `    outsvg 弹出，渲染 SVG 为图片并输出（我们懒得给这个写具体的帮助了，_`
+        `如果你不知道咋用的话还是去 Esolangs.org 看英文文档吧）`
     ()),
     "nout nouts nsend": (S
         `撤回上个输出。别干见不得人的事昂。`
@@ -218,19 +231,24 @@ const help_record : Record<string, string> = ({
         `    notewe 弹出，在自己的 private note 写入该值`
         `    noterc 弹出，读取ID为该值的成员的 public note`
         `    noterd 弹出，读取ID为该值的成员的 protected note`
-        `    notere 弹出，读取自己的 private note`
+        `    notere 读取自己的 private note`
     ()),
     guildmem: (S
         `返回近期发过言的所有群成员。`
         `抽奖 time 😋`
     ()),
-    "cmd cmdset cmddel cmdall": (S
+    "cmd cmdset cmeseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall": (S
         `有见过在QQ里写指令吗？`
         `放心，这只是 command 的缩写，我不可能把 cmd 真放这里面的。`
         `调用方式是 '¿¿<name> <arg...>'。参数解析？自己去做啊（ 不`
         `    cmd 弹出二值，以底值为参，顶值为名，调用 What Commands 的对应指令`
         `    cmdset 弹出二值，以底值为代码，顶值为名，计入 What Commands `
-        `    cmddel 弹出，以顶值为名删除 What Commands 的对应指令`
+        `    cmdseth 弹出二值，以顶值为名设置 What Commands 对应指令的短描述为底值`
+        `    cmdsethelp 弹出二值，以顶值为名设置 What Commands 对应指令的长帮助信息为底值`
+        `    cmdget 弹出，以该值为名获取 What Commands 对应指令的代码`
+        `    cmdgeth 弹出，以该值为名获取 What Commands 对应指令的短描述`
+        `    cmdgethelp 弹出，以该值为名获取 What Commands 对应指令的长帮助信息`
+        `    cmddel 弹出，以该值为名删除 What Commands 的对应指令`
         `    cmdall 返回所有 What Commands 名`
     ()),
 })
@@ -243,12 +261,15 @@ export const help : Function = (x : string | undefined) => {
     if (!x) {
         return (S
             `WhatLang 为一门大致上基于栈，完全没有任何优势的语言。`
-            `这破玩意目前只有一个 TypeScript 写的，在 Koishi 上运行的解释器（也就是你用的这个），_`
-            `所以很多指令都是只能在聊天平台上运行的。（也许我本来就是为了这个？）`
+            `这破玩意尽管现在已经有一大堆其它的解释器了，但是除了你现在在用的这个 TypeScript 写的_`
+            `其它全都不支持 Koishi 操作，所以很多指令都是只能在聊天平台上运行的。（也许我本来就是为了这个？）`
             ``
             `输入 '¿helpall@' （不带句号！）返回全部内置函数列表`
             `输入 '¿(内置函数名) help@.' 或 '¿("'" 加某个 ASCII 字符) help@.' 返回对应指令帮助`
             `输入 '¿example help@.' 返回一些示例`
+            ``
+            `以上来自 WhatLang 的原作者：预防。_`
+            `你也可以前往 https://esolangs.org/wiki/WhatLang 查看由 DGCK81LNN 主编的英文文档。`
         ())
     } else if (x === "all") {
         return help_list.join("\t")
@@ -261,7 +282,7 @@ export const help : Function = (x : string | undefined) => {
             `将 1 赋值给 var 并立马输出三次: `
             `    ¿1 var= ...`
             `for (let i = 0; i++; i != 5) {output("Hi", i)}: `
-            `    ¿0 i=_ :{\`Hi\` i^ 1 + i= . 5 ?~}`
+            `    ¿0 i=_ 5 ?{\`Hi\` i^. 1 + i= 5 ?}`
             `    或 ¿5 range@ (\`Hi\`.)#_ `
             `获取随机猫猫图片：`
             `    ¿(https://api.thecatapi.com/v1/images/search) cat@ ("url":"(.+?)") match@1, outimg@`
