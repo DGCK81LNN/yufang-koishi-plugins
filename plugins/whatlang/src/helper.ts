@@ -164,6 +164,9 @@ const help_record : Record<string, string> = ({
     "help helpall" : (S
         `……？`
     ()),
+    you: (S
+        `返回当前运行环境的信息。`
+    ()),
     "pr propt prompt": (S
         `仅对后文管用的消息获取。`
         `    pr 大致上是 (me@1, propt@ 0,)@ 的缩写。`

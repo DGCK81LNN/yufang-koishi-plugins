@@ -9,6 +9,7 @@ export interface Config {
     requireAppel: Computed<boolean>,
     interpolate: boolean,
     interpolateCmd: boolean,
+    youExtras: string,
 }
 export const Config = Schema.object({
     requireAppel: (Schema
@@ -17,6 +18,7 @@ export const Config = Schema.object({
     ),
     interpolate: Schema.boolean().description("启用“`$¿{ }`”插值。"),
     interpolateCmd: Schema.boolean().description("启用“`$¿( )`”What Commands 插值。"),
+    youExtras: Schema.string().description("在 you@ 字符串中添加的额外信息。"),
 })
 export const inject = ["database", "cache", "puppeteer"]
 
@@ -56,7 +58,7 @@ declare module '@koishijs/cache' {
 }
 
 
-async function getMemberList(session: Session, gid: string) {
+async function getMemberList(session: Session, gid: string, ctx: Context) {
     let result : Universal.GuildMember[]
     try {
         const { data, next } = await session.bot.getGuildMemberList(session.guildId)
@@ -67,7 +69,7 @@ async function getMemberList(session: Session, gid: string) {
         }
     } catch { }
     if (!result?.length) {
-        for await (const value of session.app.cache.values(`whatlang_members_${gid}`)) {
+        for await (const value of ctx.cache.values(`whatlang_members_${gid}`)) {
             result.push(value)
         }
     }
@@ -107,10 +109,10 @@ function headersArrToObj(pairs: any) {
     }
     return headers
 }
-const run_what = async (code : string, session : Session) => {
+const run_what = async (code : string, session : Session, ctx : Context) => {
     let output : (h | string)[] = []
     let time : number = Date.now()
-    let disp = session.app.setInterval(() => time = Date.now(), 100)
+    let disp = ctx.setInterval(() => time = Date.now(), 100)
     let dead_loop_check : () => void = () => {
         if (Date.now() - time > 5000) throw new Error("Execution timeout")
     }
@@ -121,10 +123,16 @@ const run_what = async (code : string, session : Session) => {
             helpall: (x : any) => void output.push(htmlize(help_list.reduce(
                 (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
             ))),
+            you: () => [
+                "WhatLang/2024 Environment/messaging Framework/koishi",
+                ctx.config.youExtras,
+                session.platform && `Platform/${session.platform}`,
+                session.selfId && `Id/${session.selfId}`
+            ].filter(Boolean).join(" "),
             pr: async () => session.prompt(),
             propt: async (x : any) => {
                 return new Promise(res => {
-                    const dispose = (session.app
+                    const dispose = (ctx
                         .platform(session.platform)
                         .channel(session.channelId)
                         .middleware((session2, next) => {
@@ -141,7 +149,7 @@ const run_what = async (code : string, session : Session) => {
                     const timeout = setTimeout(() => {
                         dispose()
                         res(undefined)
-                    }, session.app.config.delay.prompt)
+                    }, ctx.config.delay.prompt)
                     return
                 })
             },
@@ -152,7 +160,7 @@ const run_what = async (code : string, session : Session) => {
                 o : (x : any) => void,
             ) => {
                 return new Promise(res => {
-                    const dispose = (session.app
+                    const dispose = (ctx
                         .platform(session.platform)
                         .middleware(async (session2, next) => {
                             if (session2.platform != session.platform) return next()
@@ -171,7 +179,7 @@ const run_what = async (code : string, session : Session) => {
                     const timeout = setTimeout(() => {
                         dispose()
                         res(undefined)
-                    }, session.app.config.delay.prompt)
+                    }, ctx.config.delay.prompt)
                     return
                 })
             },
@@ -204,16 +212,16 @@ const run_what = async (code : string, session : Session) => {
             sends: async (x : any) => await session.send(output.splice(-x)),
             sendsto: async (x : any, y : any) => await session.bot.sendMessage(x, output.splice(-y)),
 /*
-            panic: async () => {const d = session.app.before("send", () => {d(); return true})},
-            panics: async (x : any) => {const d = session.app.before("send", () => {
+            panic: async () => {const d = ctx.before("send", () => {d(); return true})},
+            panics: async (x : any) => {const d = ctx.before("send", () => {
                 if (!x--) d()
                 return true
             })},
 */
-            cat: async (x : any) => await session.app.http.get(String(x), {responseType: "text"}),
-            ca: async x => [...new Uint8Array(await session.app.http.get(String(x), { responseType: "arraybuffer" }))],
+            cat: async (x : any) => await ctx.http.get(String(x), {responseType: "text"}),
+            ca: async x => [...new Uint8Array(await ctx.http.get(String(x), { responseType: "arraybuffer" }))],
             fetch: async (method: any, url: any, headers: any, data: any) => {
-                const resp = await session.app.http(url, {
+                const resp = await ctx.http(url, {
                     method,
                     headers: headersArrToObj(headers),
                     data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
@@ -224,7 +232,7 @@ const run_what = async (code : string, session : Session) => {
                 return [resp.status, resp.statusText, [...resp.headers], resp.data]
             },
             fech: async (method: any, url: any, headers: any, data: any) => {
-                const resp = await session.app.http(url, {
+                const resp = await ctx.http(url, {
                     method,
                     headers: headersArrToObj(headers),
                     data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
@@ -242,38 +250,38 @@ const run_what = async (code : string, session : Session) => {
                 o : (x : any) => void,
             ) => {
                 for await (let message of session.bot.getMessageIter(session.channelId)) {
-                    let temp : any[] = msgtoarr({ ...message, message }, await session.app.database.getUser(session.platform, message.user.id).catch(() => null))
+                    let temp : any[] = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
                     let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
                     if (temp2 || Number.isNaN(temp2)) return temp
                 }
             },
             msgbyid: async (x : any, y : any) => {
                 const message = await session.bot.getMessage(x || session.channelId, y)
-                return msgtoarr({ ...message, message }, await session.app.database.getUser(session.platform, message.user.id).catch(() => null))
+                return msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
             },
             sleep: async (x : any) => void await new Promise((res) => setTimeout(res, x * 1000)),
-            notewc: async (x : any, y : any) => void await session.app.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
-            notewd: async (x : any) => void await session.app.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
-            notewe: async (x : any) => void await session.app.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
-            noterc: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
-            noterd: async (x : any) => (await session.app.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
-            notere: async () => (await session.app.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
-            guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x)).map(i => [i.user.name, i.user.id]),
-            cmdset: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, code: x}], "name"),
-            cmdall: async () => (await session.app.database.get("whatcommands", {}, ["name"])).map(i => i.name),
-            cmdsethelp: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, help: x}], "name"),
-            cmdseth: async (x : any, y : any) => void await session.app.database.upsert("whatcommands", [{name: y, h: x}], "name"),
-            cmddel: async (x : any) => void await session.app.database.remove("whatcommands", {name: x}),
-            cmdget: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
-            cmdgethelp: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
-            cmdgeth: async (x : any) => (await session.app.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
+            notewc: async (x : any, y : any) => void await ctx.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
+            notewd: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
+            notewe: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
+            noterc: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
+            noterd: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
+            notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
+            guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
+            cmdset: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, code: x}], "name"),
+            cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
+            cmdsethelp: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, help: x}], "name"),
+            cmdseth: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, h: x}], "name"),
+            cmddel: async (x : any) => void await ctx.database.remove("whatcommands", {name: x}),
+            cmdget: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
+            cmdgethelp: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
+            cmdgeth: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
             cmd: async (
                 x : any, y : any,
                 s : any[][],
                 v : Record<string, any>,
                 o : (x : any) => void,
             ) => {
-                let temp : string = (await session.app.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
+                let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
                 if (temp == undefined) throw new Error("command not found")
                 return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o, { dead_loop_check }) ?? null
             },
@@ -285,8 +293,8 @@ const run_what = async (code : string, session : Session) => {
     return output
 }
 what.need_svo.push(..."prompt getmsg cmd".split(" "))
-const try_run_what = async (code : string, session : Session) => {
-    try {return await run_what(code, session)}
+const try_run_what = async (code : string, session : Session, ctx : Context) => {
+    try {return await run_what(code, session, ctx)}
     catch (e) {return h.escape(String(e))}
 }
 
@@ -334,7 +342,7 @@ export function apply(ctx : Context, config: Config) {
 */
         .action(({ session }, code) => {
             ctx.emit(session, "whatlang/run", code, session)
-            return try_run_what(code, session)
+            return try_run_what(code, session, ctx)
         })
     ctx.command("whatcmd <name> <arg:text>", "调用 What Commands 的指令", { strictOptions: true, captureQuote: false })
         .usage(h.escape(
@@ -349,7 +357,7 @@ export function apply(ctx : Context, config: Config) {
             }
             const code = `"${arg.replace(/(["\\])/g, "\\$1")}" "${name.replace(/(["\\])/g, "\\$1")}" cmd@`
             ctx.emit(session, "whatlang/run", code, session)
-            return try_run_what(code, session)
+            return try_run_what(code, session, ctx)
         })
 
     ctx.middleware(async (session, next) => {
@@ -373,7 +381,7 @@ export function apply(ctx : Context, config: Config) {
             return session.execute(argv)
         } else if (content.startsWith("¿")) {
             ctx.emit(session, "whatlang/run", content.slice(1), session)
-            return await try_run_what(content.slice(1), session)
+            return await try_run_what(content.slice(1), session, ctx)
         }
         return next()
     })
