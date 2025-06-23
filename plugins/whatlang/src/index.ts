@@ -243,7 +243,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                 return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
             },
             reesc: (x : any) => escapeRegExp(x),
-            getmsg: async (
+            findmsg: async (
                 x : any,
                 s : any[][],
                 v : Record<string, any>,
@@ -255,7 +255,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                     if (temp2 || Number.isNaN(temp2)) return temp
                 }
             },
-            msgbyid: async (x : any, y : any) => {
+            getmsg: async (x : any, y : any) => {
                 const message = await session.bot.getMessage(x || session.channelId, y)
                 return msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
             },
@@ -292,7 +292,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
     ).finally(() => disp())
     return output
 }
-what.need_svo.push(..."prompt getmsg cmd".split(" "))
+what.need_svo.push(..."prompt findmsg cmd".split(" "))
 const try_run_what = async (code : string, session : Session, ctx : Context) => {
     try {return await run_what(code, session, ctx)}
     catch (e) {return h.escape(String(e))}
