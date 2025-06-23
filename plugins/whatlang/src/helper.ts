@@ -240,7 +240,7 @@ const help_record : Record<string, string> = ({
         `返回近期发过言的所有群成员。`
         `抽奖 time 😋`
     ()),
-    "cmd cmdset cmeseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall": (S
+    "cmd cmdset cmdseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall": (S
         `有见过在QQ里写指令吗？`
         `放心，这只是 command 的缩写，我不可能把 cmd 真放这里面的。`
         `调用方式是 '¿¿<name> <arg...>'。参数解析？自己去做啊（ 不`
