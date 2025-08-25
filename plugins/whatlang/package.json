@@ -21,7 +21,7 @@
     "@koishijs/cache": "^2.1.0"
   },
   "dependencies": {
-    "whatlang-interpreter": "^0.2.0"
+    "whatlang-interpreter": "^0.3.0"
   },
   "koishi": {
     "description": {

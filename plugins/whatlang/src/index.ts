@@ -114,7 +114,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
     let time : number = Date.now()
     let disp = ctx.setInterval(() => time = Date.now(), 100)
     let dead_loop_check : () => void = () => {
-        if (Date.now() - time > 5000) throw new Error("Execution timeout")
+        if (Date.now() - time > 5000) return true
     }
     await what.eval_what(
         code, [[]],
@@ -283,12 +283,11 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             ) => {
                 let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
                 if (temp == undefined) throw new Error("command not found")
-                return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o, { dead_loop_check }) ?? null
+                return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o) ?? null
             },
-
+            [Symbol.for("whatlang.dead_loop_check")]: dead_loop_check
         }, what.default_var_dict),
         (x : any) => void output.push(h.text(x)),
-        { dead_loop_check }
     ).finally(() => disp())
     return output
 }
@@ -351,7 +350,7 @@ export function apply(ctx : Context, config: Config) {
         .action(({ root, session }, name, arg) => {
             name ||= ""
             arg ||= ""
-            if (root && session.quote?.content) {
+            if (root === true && session.quote?.content) {
                 if (arg.match(/\S$/)) arg += " "
                 arg += h.unescape(session.quote.content)
             }
