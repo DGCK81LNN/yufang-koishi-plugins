@@ -20,7 +20,7 @@ export const Config = Schema.object({
     interpolateCmd: Schema.boolean().description("启用“`$¿( )`”What Commands 插值。"),
     youExtras: Schema.string().description("在 you@ 字符串中添加的额外信息。"),
 })
-export const inject = ["database", "cache", "puppeteer"]
+export const inject = ["database", "cache"]
 
 
 declare module 'koishi' {
@@ -149,7 +149,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                     const timeout = setTimeout(() => {
                         dispose()
                         res(undefined)
-                    }, ctx.config.delay.prompt)
+                    }, ctx.root.config.delay.prompt)
                     return
                 })
             },
@@ -179,7 +179,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                     const timeout = setTimeout(() => {
                         dispose()
                         res(undefined)
-                    }, ctx.config.delay.prompt)
+                    }, ctx.root.config.delay.prompt)
                     return
                 })
             },
