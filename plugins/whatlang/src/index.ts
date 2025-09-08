@@ -328,11 +328,7 @@ export function apply(ctx : Context, config: Config) {
         ctx.cache.delete(`whatlang_members_${session.gid}`, session.userId)
     })
 
-    ctx.command("whatlang <code:text>", "运行 WhatLang 代码")
-        .usage(h.escape(
-            "可直接用 '¿<code...>' 代替\n" +
-            "输入 '¿help@.' 获取帮助"
-        ))
+    ctx.command("whatlang <code:text>")
 /*
         .example(h.escape("¿ `Hello, world! `"))
         .example(h.escape("¿ 10 range@ (2 + 2 pow@ 1 +.` `)#"))
@@ -343,10 +339,7 @@ export function apply(ctx : Context, config: Config) {
             ctx.emit(session, "whatlang/run", code, session)
             return try_run_what(code, session, ctx)
         })
-    ctx.command("whatcmd <name> <arg:text>", "调用 What Commands 的指令", { strictOptions: true, captureQuote: false })
-        .usage(h.escape(
-            "可直接用 '¿¿<name> <arg...>' 代替"
-        ))
+    ctx.command("whatcmd <name> <arg:text>", { strictOptions: true, captureQuote: false })
         .action(({ root, session }, name, arg) => {
             name ||= ""
             arg ||= ""
@@ -358,6 +351,17 @@ export function apply(ctx : Context, config: Config) {
             ctx.emit(session, "whatlang/run", code, session)
             return try_run_what(code, session, ctx)
         })
+
+    ctx.i18n.define("zh-CN", "commands", {
+      whatlang: {
+        description: "运行 WhatLang 代码",
+        usage: "快捷方式：¿(code...)<br/>使用 ¿help@. 获取帮助",
+      },
+      whatcmd: {
+        description: "调用 WhatCommands 指令",
+        usage: "快捷方式：¿¿(name) (arg...)",
+      },
+    })
 
     ctx.middleware(async (session, next) => {
         if (session.stripped.hasAt && !session.stripped.atSelf) return next()
