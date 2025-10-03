@@ -2,7 +2,7 @@ import { Argv, Computed, Context, Schema, Session, User, h, escapeRegExp, Univer
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
-
+import { } from 'koishi-plugin-puppeteer'
 
 export const name = 'whatlang'
 export interface Config {
@@ -20,7 +20,7 @@ export const Config = Schema.object({
     interpolateCmd: Schema.boolean().description("启用“`$¿( )`”What Commands 插值。"),
     youExtras: Schema.string().description("在 you@ 字符串中添加的额外信息。"),
 })
-export const inject = ["database", "cache"]
+export const inject = ["database", "cache", "puppeteer"]
 
 
 declare module 'koishi' {
@@ -84,7 +84,7 @@ const msgtoarr : Function = (x: Universal.Event, user?: Observed<User, ["id"]>) 
     x.user?.name, x.user?.id, user?.id,
     x.channel?.id, x.message?.quote?.id,
 ]
-const htmlize : Function = (x : any, style : Record<string, any> = {
+const imagify : Function = (x : any, style : Record<string, any> = {
     padding: "5px",
     "max-width": "96ch",
     "font-family": "monospace",
@@ -120,7 +120,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
         code, [[]],
         Object.assign({
             help: (x : any) => help(x),
-            helpall: (x : any) => void output.push(htmlize(help_list.reduce(
+            helpall: (x : any) => void output.push(imagify(help_list.reduce(
                 (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
             ))),
             you: () => [
@@ -198,13 +198,34 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             outfile: (x : any) => void output.push(h.file(x)),
             outquote: (x : any) => void output.push(h.quote(x)),
             outat: (x : any) => void output.push(h.at(x)),
-            outimag: (x : any) => void output.push(htmlize(x)),
-            outksq: (x : any) => void output.push(htmlize(x, {
+            outimag: (x : any) => void output.push(imagify(x)),
+            outksq: (x : any) => void output.push(imagify(x, {
                 "line-height": "1",
                 "font-family": "Kreative Square",
                 "white-space": "break-spaces",
             })),
             outsvg: (x : any) => void output.push(svglize(x)),
+            outhtml: async (x: any) => {
+                if (typeof x !== "string") x = formatting(x)
+                const page = await ctx.puppeteer.page()
+                try {
+                    await page.setJavaScriptEnabled(false)
+                    // block redirects
+                    page.on("request", req => {
+                        if (req.isNavigationRequest() && req.frame() === page.mainFrame()) req.abort()
+                        else req.continue()
+                    })
+                    await page.setContent("<style>body{display:inline-block}</style>" + x)
+                    await page.waitForNetworkIdle()
+                    const body = await page.$("body")
+                    const clip = await body.boundingBox()
+                    if (!clip || !clip.width || !clip.height) throw new Error("outhtml@: body is invisible or has zero size")
+                    const buf = await page.screenshot({ clip })
+                    output.push(h.image(buf, "image/png"))
+                } finally {
+                    page.close()
+                }
+            },
             nout: () => void output.pop(),
             nouts: (x : any) => void output.splice(-x),
             nsend: async (x : any) => await session.bot.deleteMessage(session.channelId, x),

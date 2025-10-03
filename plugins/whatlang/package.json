@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-whatlang",
   "description": "WhatLang Koishi runtime",
-  "version": "0.1.0",
+  "version": "0.1.0-20251003",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -18,7 +18,9 @@
     "koishi": "^4.16.6"
   },
   "devDependencies": {
-    "@koishijs/cache": "^2.1.0"
+    "@koishijs/cache": "^2.1.0",
+    "koishi": "^4.17.0",
+    "koishi-plugin-puppeteer": "^3.9.0"
   },
   "dependencies": {
     "whatlang-interpreter": "^0.3.0"
