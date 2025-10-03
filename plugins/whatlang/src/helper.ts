@@ -161,6 +161,13 @@ const help_record : Record<string, string> = ({
         `弹出，返回 该值.constructor.name。`
         `为什么不用typeof呢？`
     ()),
+    "b64 nb64 utf8 nutf8": (S
+        `是的我们现在内置了字符串跟字节数组相互转换的函数，因为这玩意手搓的话效率太低了。`
+        `    b64 弹出字节数组，返回 Base64 字符串。`
+        `    nb64 弹出 Base64 字符串，返回字节数组。`
+        `    utf8 弹出字符串，返回 UTF-8 字节数组。`
+        `    nutf8 弹出 UTF-8 字节数组，返回字符串。`
+    ()),
     "help helpall" : (S
         `……？`
     ()),
@@ -191,7 +198,7 @@ const help_record : Record<string, string> = ({
         `请求体可以是 undefined、字符串或字节数组。`
         `    fech 同上但是响应体换成字节数组。`
     ()),
-    "outimg outaudio outvideo outfile outquote outimag outksq outsvg": (S
+    "outimg outaudio outvideo outfile outquote outimag outksq outsvg outhtml": (S
         `适用于你需要一点什么图的情景。`
         `配合 send@ 也许会更好用？`
         `    outimg 弹出，输出 h.image(该值)`
@@ -201,6 +208,7 @@ const help_record : Record<string, string> = ({
         `    outksq 弹出，以 Kreative Square 字体显示为图片并输出`
         `    outsvg 弹出，渲染 SVG 为图片并输出（我们懒得给这个写具体的帮助了，_`
         `如果你不知道咋用的话还是去 Esolangs.org 看英文文档吧）`
+        `    outhtml 弹出，渲染 HTML 为图片并输出（放心你是没法 JavaScript 的）`
     ()),
     "nout nouts nsend": (S
         `撤回上个输出。别干见不得人的事昂。`
@@ -299,7 +307,7 @@ export const help : Function = (x : string | undefined) => {
             `    (...) 不作任何转义，但要求内部圆括号匹配`
             `    ' 单长度字符，不作任何转义（只需要 'a，不用 'a'）`
         ())
-    } else if (/[\[|\]]/.test(x)) {
+    } else if (/^[\[|\]]$/.test(x)) {
         return (S
             `[...] |...]`
             ``
@@ -308,7 +316,7 @@ export const help : Function = (x : string | undefined) => {
             `    ] 退出当前栈，并作为数组返回`
             `    | 弹出，并进入该数组`
         ())
-    } else if (/[{!}]/.test(x)) {
+    } else if (/^[{!}]$/.test(x)) {
         return (S
             `{...} /!+/`
             ``
@@ -318,7 +326,7 @@ export const help : Function = (x : string | undefined) => {
             `    } 弹出，若为真则跳转至匹配的 {`
             `    ! 跳转至第(!的数量)层循环外`
         ())
-    } else if (/\d/.test(x)) {
+    } else if (/^\d+$/.test(x)) {
         return (S
             `/\d+/`
             ``
@@ -327,7 +335,7 @@ export const help : Function = (x : string | undefined) => {
         ())
     } else if (x === " ") {
         return "不，我们的空格真的是 NOP。没有功能。真的。"
-    } else if (/[\x00-\x1F]/.test(x)) {
+    } else if (/^[\x00-\x1F]$/.test(x)) {
         return "……我知道这是 ASCII，但你真的不觉得哪里有问题吗？"
     } else {
         let name : string | undefined = Object.keys(help_record).find((i : any) => i.split(" ").includes(x))
