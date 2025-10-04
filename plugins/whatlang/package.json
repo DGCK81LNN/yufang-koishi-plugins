@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-whatlang",
   "description": "WhatLang Koishi runtime",
-  "version": "0.1.0-20251003",
+  "version": "0.1.20251003",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -14,6 +14,24 @@
     "koishi",
     "plugin"
   ],
+  "maintainers": [
+    {
+      "name": "YufangProbably",
+      "url": "https://github.com/YufangProbably"
+    },
+    {
+      "name": "DGCK81LNN",
+      "email": "triluolnn@163.com",
+      "url": "https://github.com/DGCK81LNN"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DGCK81LNN/yufang-koishi-plugins.git",
+    "directory": "plugins/whatlang"
+  },
+  "homepage": "https://github.com/DGCK81LNN/yufang-koishi-plugins/tree/main/plugins/whatlang",
+  "bugs": {},
   "peerDependencies": {
     "koishi": "^4.16.6"
   },
