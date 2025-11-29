@@ -198,12 +198,12 @@ const help_record : Record<string, string> = ({
         `请求体可以是 undefined、字符串或字节数组。`
         `    fech 同上但是响应体换成字节数组。`
     ()),
-    "outimg outaudio outvideo outfile outquote outimag outksq outsvg outhtml": (S
+    "outimg outaudio outvideo outfile outquote outat outimag outksq outsvg outhtml": (S
         `适用于你需要一点什么图的情景。`
         `配合 send@ 也许会更好用？`
         `    outimg 弹出，输出 h.image(该值)`
         `    outaudio 弹出，输出 h.audio(该值)`
-        `    outvideo outfile outquote... `
+        `    outvideo outfile outquote outat... （等会后两个好像不是图`
         `    outimag 弹出，以等宽字体显示为图片并输出`
         `    outksq 弹出，以 Kreative Square 字体显示为图片并输出`
         `    outsvg 弹出，渲染 SVG 为图片并输出（我们懒得给这个写具体的帮助了，_`
