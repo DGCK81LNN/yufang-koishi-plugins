@@ -3,6 +3,7 @@ import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
 import { } from 'koishi-plugin-puppeteer'
+import type { ElementHandle, Page } from 'puppeteer-core'
 
 export const name = 'whatlang'
 export interface Config {
@@ -84,21 +85,47 @@ const msgtoarr : Function = (x: Universal.Event, user?: Observed<User, ["id"]>) 
     x.user?.name, x.user?.id, user?.id,
     x.channel?.id, x.message?.quote?.id,
 ]
-const imagify : Function = (x : any, style : Record<string, any> = {
-    padding: "5px",
+const htmlize = (
+    ctx: Context,
+    x : any,
+    callback: (page: Page) => Promise<ElementHandle> = async page => {
+        await page.addStyleTag({ content: ":root { background-color: white } body { display: inline-block }" })
+        return page.$("body")
+    },
+) => ctx.puppeteer.render("", async page => {
+    await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 })
+    await page.setJavaScriptEnabled(false)
+    await page.setRequestInterception(true)
+    // block redirects
+    page.on("request", req => {
+        ctx.logger.debug("puppeteer request", req.isNavigationRequest(), req)
+        if (req.isNavigationRequest()) req.abort()
+        else req.continue()
+    })
+    await page.setContent(String(x))
+    await page.waitForNetworkIdle().catch(() => {})
+    const body = await callback(page)
+    const clip = await body.boundingBox()
+    if (!clip || !clip.width || !clip.height) throw new Error("content to render has zero size")
+    const buf = await page.screenshot({ clip, omitBackground: true })
+    return h.image(buf, "image/png") as any
+}) as unknown as Promise<h>
+const imagify = (ctx: Context, x : any, style : Record<string, any> = {
+    padding: "10px",
     "max-width": "96ch",
-    "font-family": "monospace",
+    "font": "32px Consolas, DejaVu Sans Mono, Menlo, monospace",
     "overflow-wrap": "break-word",
     "white-space": "break-spaces",
-}) => h("html", {}, [h("div", {style: style}, [formatting(x)])])
-const svglize : Function = (x : any) => h(
-    "html", {}, h("svg", {xmlns: "http://www.w3.org/2000/svg", width: x[0], height: x[1]}, (x.slice(2).map((i : any) =>
-        ["path", "p"].includes(i[0]) ? h("path", {style: i[1], d: i[2]}) :
-        ["text", "t"].includes(i[0]) ? h("text", {style: i[1], x: i[2], y: i[3]}, [formatting(i[4])]) :
-        ["img", "i"].includes(i[0]) ? h("image", {style: i[1], x: i[2], y: i[3], width: i[4], height: i[5], href: i[6]}) :
-        ""
-    ))
-))
+}) => htmlize(ctx, h("div", {style: Object.entries(style).map(p => p.join(":")).join(";")}, [formatting(x)]))
+const svglize = (ctx: Context, x : any) => htmlize(ctx,
+    h("svg", {width: x[0], height: x[1], style: x[2] == null || Array.isArray(x[2]) ? "background:white" : x[2]}, (x.slice(Array.isArray(x[2]) ? 2 : 3).map((i : any) =>
+        ["path", "p"].includes(i[0]) ? h("path", {style: i[1], d: i[2]})
+        : ["text", "t"].includes(i[0]) ? h("text", {style: i[1], x: i[2], y: i[3]}, [formatting(i[4])])
+        : ["img", "i"].includes(i[0]) ? h("image", {style: i[1], x: i[2], y: i[3], width: i[4], height: i[5], href: i[6]})
+        : ""
+    ))),
+    page => page.$("svg"),
+)
 function headersArrToObj(pairs: any) {
     const headers = {}
     for (let [key, value] of pairs) {
@@ -120,7 +147,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
         code, [[]],
         Object.assign({
             help: (x : any) => help(x),
-            helpall: (x : any) => void output.push(imagify(help_list.reduce(
+            helpall: async () => void output.push(await imagify(ctx, help_list.reduce(
                 (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
             ))),
             you: () => [
@@ -198,34 +225,15 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             outfile: (x : any) => void output.push(h.file(x)),
             outquote: (x : any) => void output.push(h.quote(x)),
             outat: (x : any) => void output.push(h.at(x)),
-            outimag: (x : any) => void output.push(imagify(x)),
-            outksq: (x : any) => void output.push(imagify(x, {
+            outimag: async (x : any) => void output.push(await imagify(ctx, x)),
+            outksq: async (x : any) => void output.push(await imagify(ctx, x, {
+                width: "max-content",
                 "line-height": "1",
                 "font-family": "Kreative Square",
-                "white-space": "break-spaces",
+                "white-space": "pre",
             })),
-            outsvg: (x : any) => void output.push(svglize(x)),
-            outhtml: async (x: any) => {
-                if (typeof x !== "string") x = formatting(x)
-                const page = await ctx.puppeteer.page()
-                try {
-                    await page.setJavaScriptEnabled(false)
-                    // block redirects
-                    page.on("request", req => {
-                        if (req.isNavigationRequest() && req.frame() === page.mainFrame()) req.abort()
-                        else req.continue()
-                    })
-                    await page.setContent("<style>body{display:inline-block}</style>" + x)
-                    await page.waitForNetworkIdle()
-                    const body = await page.$("body")
-                    const clip = await body.boundingBox()
-                    if (!clip || !clip.width || !clip.height) throw new Error("outhtml@: body is invisible or has zero size")
-                    const buf = await page.screenshot({ clip })
-                    output.push(h.image(buf, "image/png"))
-                } finally {
-                    page.close()
-                }
-            },
+            outsvg: async (x : any) => void output.push(await svglize(ctx, x)),
+            outhtml: async (x: any) => void output.push(await htmlize(ctx, formatting(x))),
             nout: () => void output.pop(),
             nouts: (x : any) => void output.splice(-x),
             nsend: async (x : any) => await session.bot.deleteMessage(session.channelId, x),
