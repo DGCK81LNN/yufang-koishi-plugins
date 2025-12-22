@@ -229,7 +229,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             outksq: async (x : any) => void output.push(await imagify(ctx, x, {
                 width: "max-content",
                 "line-height": "1",
-                "font-family": "Kreative Square",
+                "font": "32px Kreative Square",
                 "white-space": "pre",
             })),
             outsvg: async (x : any) => void output.push(await svglize(ctx, x)),
