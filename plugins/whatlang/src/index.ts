@@ -14,12 +14,12 @@ export interface Config {
 }
 export const Config = Schema.object({
     requireAppel: (Schema
-        .computed(Boolean).default(false)
+        .computed(Schema.boolean()).default(false)
         .description("在群聊中，使用倒问号快捷方式是否必须 @ bot 或开头带昵称。")
     ),
-    interpolate: Schema.boolean().description("启用“`$¿{ }`”插值。"),
-    interpolateCmd: Schema.boolean().description("启用“`$¿( )`”What Commands 插值。"),
-    youExtras: Schema.string().description("在 you@ 字符串中添加的额外信息。"),
+    interpolate: Schema.boolean().default(false).description("启用“`$¿{ }`”插值。"),
+    interpolateCmd: Schema.boolean().default(false).description("启用“`$¿( )`”What Commands 插值。"),
+    youExtras: Schema.string().default("").description("在 you@ 字符串中添加的额外信息。"),
 })
 export const inject = ["database", "cache", "puppeteer"]
 
@@ -382,14 +382,14 @@ export function apply(ctx : Context, config: Config) {
         })
 
     ctx.i18n.define("zh-CN", "commands", {
-      whatlang: {
-        description: "运行 WhatLang 代码",
-        usage: "快捷方式：¿(code...)<br/>使用 ¿help@. 获取帮助",
-      },
-      whatcmd: {
-        description: "调用 WhatCommands 指令",
-        usage: "快捷方式：¿¿(name) (arg...)",
-      },
+        whatlang: {
+            description: "运行 WhatLang 代码",
+            usage: "快捷方式：¿(code...)\n使用 ¿help@. 获取帮助",
+        },
+        whatcmd: {
+            description: "调用 WhatCommands 指令",
+            usage: "快捷方式：¿¿(name) (arg...)",
+        },
     })
 
     ctx.middleware(async (session, next) => {
