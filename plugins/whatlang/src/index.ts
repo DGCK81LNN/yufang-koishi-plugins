@@ -373,8 +373,8 @@ export function apply(ctx : Context, config: Config) {
             name ||= ""
             arg ||= ""
             if (root === true && session.quote?.content) {
-                if (arg.match(/\S$/)) arg += " "
-                arg += h.unescape(session.quote.content)
+                if (arg) arg += "\f"
+                arg += "\f" + h.unescape(session.quote.content)
             }
             const code = `"${arg.replace(/(["\\])/g, "\\$1")}" "${name.replace(/(["\\])/g, "\\$1")}" cmd@`
             ctx.emit(session, "whatlang/run", code, session)
@@ -398,16 +398,16 @@ export function apply(ctx : Context, config: Config) {
         let content : string = h.unescape(session.stripped.content)
         if (content.startsWith("¿¿")) {
             let wcmd : string = content.slice(2)
-            let space_pos : number = wcmd.indexOf(" ")
-            let arg : string = space_pos == -1 ? "" : wcmd.slice(1 + space_pos)
-            let name : string = space_pos == -1 ? wcmd : wcmd.slice(0, space_pos)
+            let space_pos : number = wcmd.match(/\s/)?.index ?? wcmd.length
+            let arg : string = wcmd.slice(1 + space_pos)
+            let name : string = wcmd.slice(0, space_pos)
             let argv : Argv = Argv.parse(`whatcmd `)
             argv.tokens.push({ inters: [], content: name, quoted: true, terminator: " " })
             // Workaround for https://github.com/koishijs/koishi/issues/1473
             argv.tokens.push({ inters: [], content: "", quoted: true, terminator: "" })
             argv.tokens.push(...Argv.parse(h.escape(arg)).tokens.map(token => ({ ...token, quoted: true })))
             if (session.quote?.content) {
-                if (argv.tokens.length > 3) argv.tokens.at(-1).terminator ||= " "
+                if (argv.tokens.length > 3) argv.tokens.at(-1).terminator += "\f"
                 argv.tokens.push({ inters: [], content: session.quote.content, quoted: true, terminator: "" })
             }
             return session.execute(argv)
