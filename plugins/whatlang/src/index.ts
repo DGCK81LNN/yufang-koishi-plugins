@@ -32,6 +32,7 @@ declare module 'koishi' {
     }
     interface Events {
         "whatlang/run"(code: string, session: Session): void,
+        "whatlang/command"(name: string, arg: string, session: Session): void,
     }
 }
 export interface WhatNoter {
@@ -320,6 +321,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
         ) => {
             let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
             if (temp == undefined) throw new Error("command not found")
+            ctx.emit(session, "whatlang/command", y, x, session)
             return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], { ...vars }, o) ?? null
         },
         [Symbol.for("whatlang.dead_loop_check")]: dead_loop_check,
