@@ -136,6 +136,19 @@ function headersArrToObj(pairs: any) {
     }
     return headers
 }
+// Hack to get locale fallback sequence used by `session.i18n()`
+function getLocales(ctx: Context, session: Session) {
+    // `session.i18n(path, params)` returns `this.app.i18n.render(locales, paths, params)`
+    // We will use a fake `app` object to obtain the resolved `locales`
+    const appShadow = Object.create(ctx.root, {
+        i18n: { value: { render(locales: string[]) { return locales } } },
+    })
+    const sessionShadow = Object.create(session, {
+        app: { value: appShadow },
+    })
+    const locales = session.i18n.call(sessionShadow) as string[]
+    return deduplicate(locales)
+}
 const run_what = async (code : string, session : Session, ctx : Context) => {
     let output : (h | string)[] = []
     let time : number = Date.now()
@@ -143,6 +156,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
     let dead_loop_check : () => void = () => {
         if (Date.now() - time > 5000) return true
     }
+    let locales : string[]
     let vars = {
         ...what.default_var_dict,
         help: (x : any) => help(x),
@@ -156,12 +170,12 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             session.selfId && `Id/${session.selfId}`
         ].filter(Boolean).join(" "),
         pr: async () => h.unescape(await session.prompt()),
-        propt: async (x : any) => {
+        propt: async (x : any) => {ctx.logger.info("filter users", makeArray(x).map(formatting))
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
                     .channel(session.channelId)
-                    .user(...makeArray(x).map(what.formatting))
+                    .user(...makeArray(x).map(formatting))
                     .middleware(async (session2) => {
                         clearTimeout(timeout)
                         let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
@@ -181,11 +195,11 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             s : any[][],
             v : Record<string, any>,
             o : (x : any) => void,
-        ) => {
+        ) => {ctx.logger.info("filter channels", makeArray(x).map(formatting))
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
-                    .channel(...makeArray(x).map(what.formatting))
+                    .channel(...makeArray(x).map(formatting))
                     .middleware(async (session2, next) => {
                         let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
                         let temp : any[] = sessiontoarr(session2, binding?.aid)
@@ -204,6 +218,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             })
         },
         me: () => sessiontoarr(session),
+        locales: () => [...locales ??= getLocales(ctx, session)],
 /*
         getuser: async (x : any) => {
             let user : any = await session.bot.getUser(x)

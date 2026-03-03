@@ -188,6 +188,9 @@ const help_record : Record<string, string> = ({
         `返回该消息的信息。`
         `呃不，不是我，是你。`
     ()),
+    locales: (S
+        `返回当前上下文的语言偏好回退顺序。`
+    ()),
     "cat ca fetch fech": (S
         `HTTP 请求。如果你实在闲着，试试配合 match@ 写个爬虫？`
         `这里本来只有 cat，剩下都是我(LNN)加的。`
