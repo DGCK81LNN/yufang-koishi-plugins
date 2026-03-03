@@ -143,181 +143,180 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
     let dead_loop_check : () => void = () => {
         if (Date.now() - time > 5000) return true
     }
-    await what.eval_what(
-        code, [[]],
-        Object.assign({
-            help: (x : any) => help(x),
-            helpall: async () => void output.push(await imagify(ctx, help_list.reduce(
-                (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
-            ))),
-            you: () => [
-                "WhatLang/2024 Environment/messaging Framework/koishi",
-                ctx.config.youExtras,
-                session.platform && `Platform/${session.platform}`,
-                session.selfId && `Id/${session.selfId}`
-            ].filter(Boolean).join(" "),
-            pr: async () => session.prompt(),
-            propt: async (x : any) => {
-                return new Promise(res => {
-                    const dispose = (ctx
-                        .platform(session.platform)
-                        .channel(session.channelId)
-                        .middleware((session2, next) => {
-                            if (session2.cid != session.cid) return next()
-                            if (x &&
-                                session2.userId != x &&
-                                !(Array.isArray(x) && x.includes(session2.userId))
-                            ) return next()
-                            clearTimeout(timeout)
-                            res(sessiontoarr(session2))
-                            dispose()
-                        })
-                    )
-                    const timeout = setTimeout(() => {
+    let vars = {
+        ...what.default_var_dict,
+        help: (x : any) => help(x),
+        helpall: async () => void output.push(await imagify(ctx, help_list.reduce(
+            (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
+        ))),
+        you: () => [
+            "WhatLang/2024 Environment/messaging Framework/koishi",
+            ctx.config.youExtras,
+            session.platform && `Platform/${session.platform}`,
+            session.selfId && `Id/${session.selfId}`
+        ].filter(Boolean).join(" "),
+        pr: async () => session.prompt(),
+        propt: async (x : any) => {
+            return new Promise(res => {
+                const dispose = (ctx
+                    .platform(session.platform)
+                    .channel(session.channelId)
+                    .middleware((session2, next) => {
+                        if (session2.cid != session.cid) return next()
+                        if (x &&
+                            session2.userId != x &&
+                            !(Array.isArray(x) && x.includes(session2.userId))
+                        ) return next()
+                        clearTimeout(timeout)
+                        res(sessiontoarr(session2))
                         dispose()
-                        res(undefined)
-                    }, ctx.root.config.delay.prompt)
-                    return
-                })
-            },
-            prompt: async (
-                x : any, y : any,
-                s : any[][],
-                v : Record<string, any>,
-                o : (x : any) => void,
-            ) => {
-                return new Promise(res => {
-                    const dispose = (ctx
-                        .platform(session.platform)
-                        .middleware(async (session2, next) => {
-                            if (session2.platform != session.platform) return next()
-                            if (x &&
-                                session2.channelId != x &&
-                                !(Array.isArray(x) && x.includes(session2.channelId))
-                            ) return next()
-                            let temp : any[] = sessiontoarr(session2)
-                            let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, y])], v, o)
-                            if (!temp2 && !Number.isNaN(temp2)) return next()
-                            clearTimeout(timeout)
-                            res(temp)
-                            dispose()
-                        })
-                    )
-                    const timeout = setTimeout(() => {
+                    })
+                )
+                const timeout = setTimeout(() => {
+                    dispose()
+                    res(undefined)
+                }, ctx.root.config.delay.prompt)
+                return
+            })
+        },
+        prompt: async (
+            x : any, y : any,
+            s : any[][],
+            v : Record<string, any>,
+            o : (x : any) => void,
+        ) => {
+            return new Promise(res => {
+                const dispose = (ctx
+                    .platform(session.platform)
+                    .middleware(async (session2, next) => {
+                        if (session2.platform != session.platform) return next()
+                        if (x &&
+                            session2.channelId != x &&
+                            !(Array.isArray(x) && x.includes(session2.channelId))
+                        ) return next()
+                        let temp : any[] = sessiontoarr(session2)
+                        let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, y])], v, o)
+                        if (!temp2 && !Number.isNaN(temp2)) return next()
+                        clearTimeout(timeout)
+                        res(temp)
                         dispose()
-                        res(undefined)
-                    }, ctx.root.config.delay.prompt)
-                    return
-                })
-            },
-            me: () => sessiontoarr(session),
+                    })
+                )
+                const timeout = setTimeout(() => {
+                    dispose()
+                    res(undefined)
+                }, ctx.root.config.delay.prompt)
+                return
+            })
+        },
+        me: () => sessiontoarr(session),
 /*
-            getuser: async (x : any) => {
-                let user : any = await session.bot.getUser(x)
-                return [
-                    user.id, user.name, user.avatar,
-                ]
-            },
+        getuser: async (x : any) => {
+            let user : any = await session.bot.getUser(x)
+            return [
+                user.id, user.name, user.avatar,
+            ]
+        },
 */
-            outimg: (x : any) => void output.push(h.image(x)),
-            outaudio: (x : any) => void output.push(h.audio(x)),
-            outvideo: (x : any) => void output.push(h.video(x)),
-            outfile: (x : any) => void output.push(h.file(x)),
-            outquote: (x : any) => void output.push(h.quote(x)),
-            outat: (x : any) => void output.push(h.at(x)),
-            outimag: async (x : any) => void output.push(await imagify(ctx, x)),
-            outksq: async (x : any) => void output.push(await imagify(ctx, x, {
-                width: "max-content",
-                "line-height": "1",
-                "font": "32px Kreative Square",
-                "white-space": "pre",
-            })),
-            outsvg: async (x : any) => void output.push(await svglize(ctx, x)),
-            outhtml: async (x: any) => void output.push(await htmlize(ctx, formatting(x))),
-            nout: () => void output.pop(),
-            nouts: (x : any) => void output.splice(-x),
-            nsend: async (x : any) => await session.bot.deleteMessage(session.channelId, x),
-            send: async () => await session.send(output.pop()),
-            sends: async (x : any) => await session.send(output.splice(-x)),
-            sendsto: async (x : any, y : any) => await session.bot.sendMessage(x, output.splice(-y)),
+        outimg: (x : any) => void output.push(h.image(x)),
+        outaudio: (x : any) => void output.push(h.audio(x)),
+        outvideo: (x : any) => void output.push(h.video(x)),
+        outfile: (x : any) => void output.push(h.file(x)),
+        outquote: (x : any) => void output.push(h.quote(x)),
+        outat: (x : any) => void output.push(h.at(x)),
+        outimag: async (x : any) => void output.push(await imagify(ctx, x)),
+        outksq: async (x : any) => void output.push(await imagify(ctx, x, {
+            width: "max-content",
+            "line-height": "1",
+            "font": "32px Kreative Square",
+            "white-space": "pre",
+        })),
+        outsvg: async (x : any) => void output.push(await svglize(ctx, x)),
+        outhtml: async (x: any) => void output.push(await htmlize(ctx, formatting(x))),
+        nout: () => void output.pop(),
+        nouts: (x : any) => void output.splice(-x),
+        nsend: async (x : any) => await session.bot.deleteMessage(session.channelId, x),
+        send: async () => await session.send(output.pop()),
+        sends: async (x : any) => await session.send(output.splice(-x)),
+        sendsto: async (x : any, y : any) => await session.bot.sendMessage(x, output.splice(-y)),
 /*
-            panic: async () => {const d = ctx.before("send", () => {d(); return true})},
-            panics: async (x : any) => {const d = ctx.before("send", () => {
-                if (!x--) d()
-                return true
-            })},
+        panic: async () => {const d = ctx.before("send", () => {d(); return true})},
+        panics: async (x : any) => {const d = ctx.before("send", () => {
+            if (!x--) d()
+            return true
+        })},
 */
-            cat: async (x : any) => await ctx.http.get(String(x), {responseType: "text"}),
-            ca: async x => [...new Uint8Array(await ctx.http.get(String(x), { responseType: "arraybuffer" }))],
-            fetch: async (method: any, url: any, headers: any, data: any) => {
-                const resp = await ctx.http(url, {
-                    method,
-                    headers: headersArrToObj(headers),
-                    data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
-                    responseType: "text",
-                    validateStatus: () => true,
-                    redirect: "manual",
-                })
-                return [resp.status, resp.statusText, [...resp.headers], resp.data]
-            },
-            fech: async (method: any, url: any, headers: any, data: any) => {
-                const resp = await ctx.http(url, {
-                    method,
-                    headers: headersArrToObj(headers),
-                    data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
-                    responseType: "arraybuffer",
-                    validateStatus: () => true,
-                    redirect: "manual",
-                })
-                return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
-            },
-            reesc: (x : any) => escapeRegExp(x),
-            findmsg: async (
-                x : any,
-                s : any[][],
-                v : Record<string, any>,
-                o : (x : any) => void,
-            ) => {
-                for await (let message of session.bot.getMessageIter(session.channelId)) {
-                    let temp : any[] = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
-                    let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
-                    if (temp2 || Number.isNaN(temp2)) return temp
-                }
-            },
-            getmsg: async (x : any, y : any) => {
-                const message = await session.bot.getMessage(x || session.channelId, y)
-                return msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
-            },
-            sleep: async (x : any) => void await new Promise((res) => setTimeout(res, x * 1000)),
-            notewc: async (x : any, y : any) => void await ctx.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
-            notewd: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
-            notewe: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
-            noterc: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
-            noterd: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
-            notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
-            guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
-            cmdset: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, code: x}], "name"),
-            cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
-            cmdsethelp: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, help: x}], "name"),
-            cmdseth: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, h: x}], "name"),
-            cmddel: async (x : any) => void await ctx.database.remove("whatcommands", {name: x}),
-            cmdget: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
-            cmdgethelp: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
-            cmdgeth: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
-            cmd: async (
-                x : any, y : any,
-                s : any[][],
-                v : Record<string, any>,
-                o : (x : any) => void,
-            ) => {
-                let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
-                if (temp == undefined) throw new Error("command not found")
-                return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], v, o) ?? null
-            },
-            [Symbol.for("whatlang.dead_loop_check")]: dead_loop_check
-        }, what.default_var_dict),
-        (x : any) => void output.push(h.text(x)),
-    ).finally(() => disp())
+        cat: async (x : any) => await ctx.http.get(String(x), {responseType: "text"}),
+        ca: async x => [...new Uint8Array(await ctx.http.get(String(x), { responseType: "arraybuffer" }))],
+        fetch: async (method: any, url: any, headers: any, data: any) => {
+            const resp = await ctx.http(url, {
+                method,
+                headers: headersArrToObj(headers),
+                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                responseType: "text",
+                validateStatus: () => true,
+                redirect: "manual",
+            })
+            return [resp.status, resp.statusText, [...resp.headers], resp.data]
+        },
+        fech: async (method: any, url: any, headers: any, data: any) => {
+            const resp = await ctx.http(url, {
+                method,
+                headers: headersArrToObj(headers),
+                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                responseType: "arraybuffer",
+                validateStatus: () => true,
+                redirect: "manual",
+            })
+            return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
+        },
+        reesc: (x : any) => escapeRegExp(x),
+        findmsg: async (
+            x : any,
+            s : any[][],
+            v : Record<string, any>,
+            o : (x : any) => void,
+        ) => {
+            for await (let message of session.bot.getMessageIter(session.channelId)) {
+                let temp : any[] = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
+                let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
+                if (temp2 || Number.isNaN(temp2)) return temp
+            }
+        },
+        getmsg: async (x : any, y : any) => {
+            const message = await session.bot.getMessage(x || session.channelId, y)
+            return msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
+        },
+        sleep: async (x : any) => void await new Promise((res) => setTimeout(res, x * 1000)),
+        notewc: async (x : any, y : any) => void await ctx.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
+        notewd: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
+        notewe: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
+        noterc: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
+        noterd: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
+        notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
+        guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
+        cmdset: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, code: x}], "name"),
+        cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
+        cmdsethelp: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, help: x}], "name"),
+        cmdseth: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, h: x}], "name"),
+        cmddel: async (x : any) => void await ctx.database.remove("whatcommands", {name: x}),
+        cmdget: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
+        cmdgethelp: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
+        cmdgeth: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
+        cmd: async (
+            x : any, y : any,
+            s : any[][],
+            v : Record<string, any>,
+            o : (x : any) => void,
+        ) => {
+            let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
+            if (temp == undefined) throw new Error("command not found")
+            return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], { ...vars }, o) ?? null
+        },
+        [Symbol.for("whatlang.dead_loop_check")]: dead_loop_check,
+    }
+    await what.eval_what(code, [[]], { ...vars }, (x : any) => void output.push(h.text(x)))
+        .finally(() => disp())
     return output
 }
 what.need_svo.push(..."prompt findmsg cmd".split(" "))
