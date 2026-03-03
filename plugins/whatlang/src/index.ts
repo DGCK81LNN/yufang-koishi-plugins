@@ -1,4 +1,4 @@
-import { Argv, Computed, Context, Schema, Session, User, h, escapeRegExp, Universal, Observed } from 'koishi'
+import { Argv, Computed, Context, Schema, Session, h, escapeRegExp, Universal, deduplicate, makeArray } from 'koishi'
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
@@ -78,11 +78,11 @@ async function getMemberList(session: Session, gid: string, ctx: Context) {
 }
 
 
-const formatting : Function = (x: any) => typeof x == "string" ? x : what.formatting(x)
-const sessiontoarr : Function = (x: Session) => msgtoarr(x.event, x.user)
-const msgtoarr : Function = (x: Universal.Event, user?: Observed<User, ["id"]>) => [
+const formatting = (x: any) => typeof x == "string" ? x : what.formatting(x)
+const sessiontoarr = (x: Session, aid?: number) => msgtoarr(x.event, aid ?? (x.user as any)?.id)
+const msgtoarr = (x: Universal.Message & { message?: Universal.Message }, aid: number) => [
     x.message?.content, x.message?.id,
-    x.user?.name, x.user?.id, user?.id,
+    x.user?.name, x.user?.id, aid,
     x.channel?.id, x.message?.quote?.id,
 ]
 const htmlize = (
@@ -155,26 +155,23 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             session.platform && `Platform/${session.platform}`,
             session.selfId && `Id/${session.selfId}`
         ].filter(Boolean).join(" "),
-        pr: async () => session.prompt(),
+        pr: async () => h.unescape(await session.prompt()),
         propt: async (x : any) => {
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
                     .channel(session.channelId)
-                    .middleware((session2, next) => {
-                        if (session2.cid != session.cid) return next()
-                        if (x &&
-                            session2.userId != x &&
-                            !(Array.isArray(x) && x.includes(session2.userId))
-                        ) return next()
+                    .user(...makeArray(x).map(what.formatting))
+                    .middleware(async (session2) => {
                         clearTimeout(timeout)
-                        res(sessiontoarr(session2))
+                        let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
+                        res(sessiontoarr(session2, binding?.aid))
                         dispose()
-                    })
+                    }, true)
                 )
                 const timeout = setTimeout(() => {
                     dispose()
-                    res(undefined)
+                    res(null)
                 }, ctx.root.config.delay.prompt)
                 return
             })
@@ -188,23 +185,20 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
+                    .channel(...makeArray(x).map(what.formatting))
                     .middleware(async (session2, next) => {
-                        if (session2.platform != session.platform) return next()
-                        if (x &&
-                            session2.channelId != x &&
-                            !(Array.isArray(x) && x.includes(session2.channelId))
-                        ) return next()
-                        let temp : any[] = sessiontoarr(session2)
+                        let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
+                        let temp : any[] = sessiontoarr(session2, binding?.aid)
                         let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, y])], v, o)
                         if (!temp2 && !Number.isNaN(temp2)) return next()
                         clearTimeout(timeout)
                         res(temp)
                         dispose()
-                    })
+                    }, true)
                 )
                 const timeout = setTimeout(() => {
                     dispose()
-                    res(undefined)
+                    res(null)
                 }, ctx.root.config.delay.prompt)
                 return
             })
