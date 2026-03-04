@@ -90,7 +90,11 @@ const htmlize = (
     ctx: Context,
     x : any,
     callback: (page: Page) => Promise<ElementHandle> = async page => {
-        await page.addStyleTag({ content: ":root { background-color: white } body { display: inline-block }" })
+        page.evaluate(`
+            const style = document.createElement("style")
+            style.append("html { background-color: white } body { display: inline-block }")
+            document.documentElement.prepend(style)
+        `)
         return page.$("body")
     },
 ) => ctx.puppeteer.render("", async page => {
@@ -292,6 +296,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                 let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
                 if (temp2 || Number.isNaN(temp2)) return temp
             }
+            return null
         },
         getmsg: async (x : any, y : any) => {
             const message = await session.bot.getMessage(x || session.channelId, y)
