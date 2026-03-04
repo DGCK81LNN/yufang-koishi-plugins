@@ -1,4 +1,4 @@
-import { Argv, Computed, Context, Schema, Session, h, escapeRegExp, Universal, deduplicate, makeArray } from 'koishi'
+import { Argv, Computed, Context, Schema, Session, h, escapeRegExp, Universal, makeArray, Channel, User } from 'koishi'
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
@@ -80,7 +80,7 @@ async function getMemberList(session: Session, gid: string, ctx: Context) {
 
 
 const formatting = (x: any) => typeof x == "string" ? x : what.formatting(x)
-const sessiontoarr = (x: Session, aid?: number) => msgtoarr(x.event, aid ?? (x.user as any)?.id)
+const sessiontoarr = (x: Session, aid?: number) => msgtoarr(x.event, aid ?? (x.user as User.Observed)?.id)
 const msgtoarr = (x: Universal.Message & { message?: Universal.Message }, aid: number) => [
     x.message?.content, x.message?.id,
     x.user?.name, x.user?.id, aid,
@@ -141,19 +141,6 @@ function headersArrToObj(pairs: any) {
     }
     return headers
 }
-// Hack to get locale fallback sequence used by `session.i18n()`
-function getLocales(ctx: Context, session: Session) {
-    // `session.i18n(path, params)` returns `this.app.i18n.render(locales, paths, params)`
-    // We will use a fake `app` object to obtain the resolved `locales`
-    const appShadow = Object.create(ctx.root, {
-        i18n: { value: { render(locales: string[]) { return locales } } },
-    })
-    const sessionShadow = Object.create(session, {
-        app: { value: appShadow },
-    })
-    const locales = session.i18n.call(sessionShadow) as string[]
-    return deduplicate(locales)
-}
 const run_what = async (code : string, session : Session, ctx : Context) => {
     let output : (h | string)[] = []
     let time : number = Date.now()
@@ -161,7 +148,6 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
     let dead_loop_check : () => void = () => {
         if (Date.now() - time > 5000) return true
     }
-    let locales : string[]
     let vars = {
         ...what.default_var_dict,
         help: (x : any) => help(x),
@@ -223,7 +209,13 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             })
         },
         me: () => sessiontoarr(session),
-        locales: () => [...locales ??= getLocales(ctx, session)],
+        locale: () => (
+            session.locales?.[0] ||
+            ctx.root.config.i18n.output === "prefer-user" && (session.user as User.Observed)?.locales?.[0] ||
+            (session.channel as Channel.Observed)?.locales?.[0] ||
+            (session.user as User.Observed)?.locales?.[0] ||
+            null
+        ),
 /*
         getuser: async (x : any) => {
             let user : any = await session.bot.getUser(x)

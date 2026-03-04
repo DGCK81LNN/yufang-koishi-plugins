@@ -2,17 +2,17 @@ type Raw = {
     raw: readonly string[] | ArrayLike<string>;
 }
 const S = (x : Raw, ...eltwa : any[]) => {
-  var str : string = ""
-  const tag : Function = (x : Raw, ...eltwa : any[]) => {
-    if (!x) return str.slice(0, str.length - 1)
-    str += String.raw(x, ...eltwa)
-      .replace(/\\`/g, "`")
-      .replace(/\\\\/g, "\\")
-    if (str.slice(-1) != "_") str += "\n"
-    else str = str.slice(0, -1)
-    return tag
-  }
-  return tag(x, ...eltwa)
+    var str : string = ""
+    const tag : Function = (x : Raw, ...eltwa : any[]) => {
+        if (!x) return str.slice(0, str.length - 1)
+        str += String.raw(x, ...eltwa)
+        .replace(/\\`/g, "`")
+        .replace(/\\\\/g, "\\")
+        if (str.slice(-1) != "_") str += "\n"
+        else str = str.slice(0, -1)
+        return tag
+    }
+    return tag(x, ...eltwa)
 }
 
 const help_record : Record<string, string> = ({
@@ -188,8 +188,8 @@ const help_record : Record<string, string> = ({
         `返回该消息的信息。`
         `呃不，不是我，是你。`
     ()),
-    locales: (S
-        `返回当前上下文的语言偏好回退顺序。`
+    locale: (S
+        `返回当前频道或用户首选语言的代码。`
     ()),
     "cat ca fetch fech": (S
         `HTTP 请求。如果你实在闲着，试试配合 match@ 写个爬虫？`
