@@ -330,7 +330,7 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
 what.need_svo.push(..."prompt findmsg cmd".split(" "))
 const try_run_what = async (code : string, session : Session, ctx : Context) => {
     try {return await run_what(code, session, ctx)}
-    catch (e) {return h.escape(String(e))}
+    catch (e) {ctx.logger.debug("%o", e); return h.escape(String(e))}
 }
 
 
