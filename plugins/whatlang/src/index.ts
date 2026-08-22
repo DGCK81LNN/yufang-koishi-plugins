@@ -348,7 +348,7 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
             return (await ctx.database.get("whatcommands", {name: what.to_string(x)}, ["h"]))[0]?.h ?? null
         },
         cmd: async function (x, y) {
-            if (x == undefined) throw new TypeError(`Invalid name ${x} for running command, expected String`)
+            if (y == undefined) throw new TypeError(FE`Invalid name ${y} for running command, expected String`)
             const name = what.to_string(y)
             let code = (await ctx.database.get("whatcommands", {name}, ["code"]))[0]?.code
             if (code == undefined) throw new Error("command not found")
