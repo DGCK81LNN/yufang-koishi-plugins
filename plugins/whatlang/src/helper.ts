@@ -1,9 +1,7 @@
-type Raw = {
-    raw: readonly string[] | ArrayLike<string>;
-}
-const S = (x : Raw, ...eltwa : any[]) => {
+type S = ((x : { raw: readonly string[] }, ...eltwa : any[]) => S) & (() => string)
+const S = ((x, ...eltwa) => {
     var str : string = ""
-    const tag : Function = (x : Raw, ...eltwa : any[]) => {
+    const tag = ((x, ...eltwa) => {
         if (!x) return str.slice(0, str.length - 1)
         str += String.raw(x, ...eltwa)
         .replace(/\\`/g, "`")
@@ -11,23 +9,31 @@ const S = (x : Raw, ...eltwa : any[]) => {
         if (str.slice(-1) != "_") str += "\n"
         else str = str.slice(0, -1)
         return tag
-    }
+    }) as S
     return tag(x, ...eltwa)
-}
+}) as S
 
 const help_record : Record<string, string> = ({
     "@ #": (S
         `暂且可以理解为 eval 和 map 罢。`
-        `    @ 弹出，若该字符串为内置函数名则执行，_`
-        `否则若该字符串为变量名则将该变量值以 WhatLang 运行，_`
+        `    @ 弹出，若该字符串为变量名且为有效自定义函数名_`
+        `则将该名称的变量值以 WhatLang 运行，_`
+        `否则若该字符串为内置函数名则执行，_`
         `否则将该值以 WhatLang 运行`
         `    # 弹出，对于栈顶中的每个元素，_`
         `复制当前栈，压入该元素，并对该值运行 @ 指令，_`
         `返回复制栈的栈顶构成的数组`
+        `有效自定义函数名必须满足：以ASCII字母开头，_`
+        `且不包含ASCII字母、数字、下划线以外的字符，且包含小写字母；_`
+        `或不包含任何ASCII可打印字符（不包括空格）。`
     ()),
     "+ - * / %": (S
-        `运算。还有什么好说的吗？_`
-        `（除非你从什么离奇语言过来的，这种情况下 * / % 分别是 乘 除 取余）`
+        `运算。现已增加更多功能。`
+        `    + 加，或连接字符串或数组`
+        `    - 减，或排除字符或数组项`
+        `    * 乘，或重复字符串或数组`
+        `    / 除，或将字符或数组项每几个分成一组`
+        `    % 取余`
     ()),
     ", ; $": (S
         `数组操作之类的。`
@@ -161,6 +167,9 @@ const help_record : Record<string, string> = ({
         `弹出，返回 该值.constructor.name。`
         `为什么不用typeof呢？`
     ()),
+    all : (S
+        `返回所有内置函数名。`
+    ()),
     "b64 nb64 utf8 nutf8": (S
         `是的我们现在内置了字符串跟字节数组相互转换的函数，因为这玩意手搓的话效率太低了。`
         `    b64 弹出字节数组，返回 Base64 字符串。`
@@ -238,9 +247,10 @@ const help_record : Record<string, string> = ({
         `你以为呢？`
     ()),
     "notewc notewd notewe noterc noterd notere": (S
-        `或许是一小块数据库。`
+        `或许是一小块数据库，可以存字符串。`
         `protected 为别人可读不可写，其它……还用我多说吗？`
-        `    notewc 弹出二值，在ID为底值的成员的 public note 写入顶值`
+        `    notewc 弹出二值，在ID为顶值的成员的 public note 写入底值_`
+        `（以前ID和内容是反过来的，现在两种顺序都接受，但建议ID在上）`
         `    notewd 弹出，在自己的 protected note 写入该值`
         `    notewe 弹出，在自己的 private note 写入该值`
         `    noterc 弹出，读取ID为该值的成员的 public note`
@@ -248,7 +258,7 @@ const help_record : Record<string, string> = ({
         `    notere 读取自己的 private note`
     ()),
     guildmem: (S
-        `返回近期发过言的所有群成员。`
+        `返回群成员列表。`
         `抽奖 time 😋`
     ()),
     "cmd cmdset cmdseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall": (S
@@ -268,10 +278,11 @@ const help_record : Record<string, string> = ({
 })
 export const help_list : string[] = (Object.keys(help_record)
     .join(" ").split(" ")
-    .filter((x : string) => /[a-zA-Z][a-zA-Z0-9_]*/.test(x))
+    .filter(x => /[a-zA-Z][a-zA-Z0-9_]*/.test(x))
 ).sort()
 
-export const help : Function = (x : string | undefined) => {
+export const help = (x_ : unknown): string => {
+    const x = String(x_ ?? "")
     if (!x) {
         return (S
             `WhatLang 为一门大致上基于栈，完全没有任何优势的语言。`
@@ -285,8 +296,6 @@ export const help : Function = (x : string | undefined) => {
             `以上来自 WhatLang 的原作者：预防。_`
             `你也可以前往 https://esolangs.org/wiki/WhatLang 查看由 DGCK81LNN 主编的英文文档。`
         ())
-    } else if (x === "all") {
-        return help_list.join("\t")
     } else if (x === "example") {
         return (S
             `输出 "Hello world! ": `
@@ -319,7 +328,7 @@ export const help : Function = (x : string | undefined) => {
             `    ] 退出当前栈，并作为数组返回`
             `    | 弹出，并进入该数组`
         ())
-    } else if (/^[{!}]$/.test(x)) {
+    } else if (/^\{|\}$|!+/.test(x)) {
         return (S
             `{...} /!+/`
             ``
@@ -331,18 +340,18 @@ export const help : Function = (x : string | undefined) => {
         ())
     } else if (/^\d+$/.test(x)) {
         return (S
-            `/\d+/`
+            `0 /[1-9]\d*/`
             ``
             `数字字面量。不然呢？`
             `若想使用小数，请 5 2 / 或者 (2.5)num@，感谢您的配合。`
         ())
     } else if (x === " ") {
         return "不，我们的空格真的是 NOP。没有功能。真的。"
-    } else if (/^[\x00-\x1F]$/.test(x)) {
+    } else if (/^[\x00-\x1F|\x7F]$/.test(x)) {
         return "……我知道这是 ASCII，但你真的不觉得哪里有问题吗？"
     } else {
-        let name : string | undefined = Object.keys(help_record).find((i : any) => i.split(" ").includes(x))
+        let name = Object.keys(help_record).find(i => i.split(" ").includes(x) || i.toUpperCase().split(" ").includes(x))
         if (!name) return "指令未芝士——大概是谁自个儿写的变量？"
-        return name.replace(/(?<=\b[a-zA-Z][a-zA-Z0-9_]*\b)/g, "@") + "\n\n" + help_record[name]
+        return name.replace(/([a-zA-Z][a-zA-Z0-9_]*)/g, "$1@") + "\n\n" + help_record[name]
     }
 }

@@ -32,7 +32,7 @@ declare module 'koishi' {
     }
     interface Events {
         "whatlang/run"(code: string, session: Session): void,
-        "whatlang/command"(name: string, arg: string, session: Session): void,
+        "whatlang/command"(name: string, arg: what.WhatValue, session: Session): void,
     }
 }
 export interface WhatNoter {
@@ -55,13 +55,13 @@ export interface WhatCommands {
 
 declare module '@koishijs/cache' {
     interface Tables {
-        [key: `whatlang_members_${string}`] : Universal.GuildMember,
+        [key: `whatlang_members_${string}`]: Universal.GuildMember,
     }
 }
 
 
 async function getMemberList(session: Session, gid: string, ctx: Context) {
-    let result : Universal.GuildMember[]
+    let result: Universal.GuildMember[]
     try {
         const { data, next } = await session.bot.getGuildMemberList(session.guildId)
         result = data
@@ -78,8 +78,13 @@ async function getMemberList(session: Session, gid: string, ctx: Context) {
     return result
 }
 
+function FE(segs: readonly string[], ...values: what.WhatValue[]) {
+    return String.raw(
+        { raw: segs },
+        ...values.map(x => what.formatting(x, { depth: 1, maxArrayLength: 4, maxStringLength: 50 })),
+    )
+}
 
-const formatting = (x: any) => typeof x == "string" ? x : what.formatting(x)
 const sessiontoarr = (x: Session, aid?: number) => msgtoarr(x.event, aid ?? (x.user as User.Observed)?.id)
 const msgtoarr = (x: Universal.Message & { message?: Universal.Message }, aid: number) => [
     x.message?.content, x.message?.id,
@@ -88,7 +93,7 @@ const msgtoarr = (x: Universal.Message & { message?: Universal.Message }, aid: n
 ]
 const htmlize = (
     ctx: Context,
-    x : any,
+    x: string | h,
     callback: (page: Page) => Promise<ElementHandle> = async page => {
         page.evaluate(`
             const style = document.createElement("style")
@@ -113,46 +118,54 @@ const htmlize = (
     const clip = await body.boundingBox()
     if (!clip || !clip.width || !clip.height) throw new Error("content to render has zero size")
     const buf = await page.screenshot({ clip, omitBackground: true })
+    // puppeteer.render() callback is only designed to return string, but can actually return anything
+    // here we return an Element
     return h.image(buf, "image/png") as any
 }) as unknown as Promise<h>
-const imagify = (ctx: Context, x : any, style : Record<string, any> = {
+const imagify = (ctx: Context, x: what.WhatValue, style: Record<string, string> = {
     padding: "10px",
     "max-width": "96ch",
     "font": "32px Consolas, DejaVu Sans Mono, Menlo, monospace",
     "overflow-wrap": "break-word",
     "white-space": "break-spaces",
-}) => htmlize(ctx, h("div", {style: Object.entries(style).map(p => p.join(":")).join(";")}, [formatting(x)]))
-const svglize = (ctx: Context, x : any) => htmlize(ctx,
-    h("svg", {width: x[0], height: x[1], style: x[2] == null || Array.isArray(x[2]) ? "background:white" : x[2]}, (x.slice(Array.isArray(x[2]) ? 2 : 3).map((i : any) =>
-        ["path", "p"].includes(i[0]) ? h("path", {style: i[1], d: i[2]})
-        : ["text", "t"].includes(i[0]) ? h("text", {style: i[1], x: i[2], y: i[3]}, [formatting(i[4])])
-        : ["img", "i"].includes(i[0]) ? h("image", {style: i[1], x: i[2], y: i[3], width: i[4], height: i[5], href: i[6]})
-        : ""
-    ))),
-    page => page.$("svg"),
-)
-function headersArrToObj(pairs: any) {
-    const headers = {}
-    for (let [key, value] of pairs) {
-        key = formatting(key)
-        value = formatting(value)
+}) => htmlize(ctx, h("div", {style: Object.entries(style).map(p => p.join(":")).join(";")}, [what.to_string(x)]))
+const svglize = (ctx: Context, x: what.WhatValue) => {
+    if (!Array.isArray(x)) throw TypeError(FE`Invalid SVG elements, expected Array`)
+    return htmlize(ctx,
+        h("svg", {width: x[0], height: x[1], style: x[2] == null || Array.isArray(x[2]) ? "background:white" : x[2]}, (x.slice(Array.isArray(x[2]) ? 2 : 3).map(i =>
+            ["path", "p"].includes(i[0]) ? h("path", {style: i[1], d: i[2]})
+            : ["text", "t"].includes(i[0]) ? h("text", {style: i[1], x: i[2], y: i[3]}, [what.to_string(i[4])])
+            : ["img", "i"].includes(i[0]) ? h("image", {style: i[1], x: i[2], y: i[3], width: i[4], height: i[5], href: i[6]})
+            : ""
+        ))),
+        page => page.$("svg"),
+    )
+}
+function headersArrToObj(pairs: what.WhatValue) {
+    if (pairs == undefined || pairs === "") return []
+    if (!Array.isArray(pairs))
+        throw new TypeError(FE`Invalid HTTP headers ${pairs}, expected Array or Undefined`)
+    const headers: [string, string][] = []
+    for (let pair of pairs) {
+    if (!Array.isArray(pair) || pair.length < 2) continue
+        const [key, value] = pair.slice(0, 2).map(what.to_string)
         if (Object.hasOwn(headers, key)) headers[key] += ", " + value
         else headers[key] = value
     }
     return headers
 }
-const run_what = async (code : string, session : Session, ctx : Context) => {
-    let output : (h | string)[] = []
-    let time : number = Date.now()
+const run_what = async (code: string, session: Session, ctx: Context) => {
+    let output: (h | string)[] = []
+    let time = Date.now()
     let disp = ctx.setInterval(() => time = Date.now(), 100)
-    let dead_loop_check : () => void = () => {
+    let dead_loop_check: () => boolean = () => {
         if (Date.now() - time > 5000) return true
     }
-    let vars = {
-        ...what.default_var_dict,
-        help: (x : any) => help(x),
+    let builtins: Record<string, what.WhatFunc> = {
+        ...what.default_builtins,
+        help: x => help(x),
         helpall: async () => void output.push(await imagify(ctx, help_list.reduce(
-            (last : any, n : any, i : number) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
+            (last, n, i) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
         ))),
         you: () => [
             "WhatLang/2024 Environment/messaging Framework/koishi",
@@ -161,12 +174,12 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             session.selfId && `Id/${session.selfId}`
         ].filter(Boolean).join(" "),
         pr: async () => h.unescape(await session.prompt()),
-        propt: async (x : any) => {ctx.logger.info("filter users", makeArray(x).map(formatting))
+        propt: async x => {
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
                     .channel(session.channelId)
-                    .user(...makeArray(x).map(formatting))
+                    .user(...makeArray(x).map(what.to_string))
                     .middleware(async (session2) => {
                         clearTimeout(timeout)
                         let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
@@ -181,23 +194,18 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
                 return
             })
         },
-        prompt: async (
-            x : any, y : any,
-            s : any[][],
-            v : Record<string, any>,
-            o : (x : any) => void,
-        ) => {ctx.logger.info("filter channels", makeArray(x).map(formatting))
+        prompt: async function (x, y) {
             return new Promise(res => {
                 const dispose = (ctx
                     .platform(session.platform)
-                    .channel(...makeArray(x).map(formatting))
+                    .channel(...makeArray(x).map(what.to_string))
                     .middleware(async (session2, next) => {
                         let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
-                        let temp : any[] = sessiontoarr(session2, binding?.aid)
-                        let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, y])], v, o)
-                        if (!temp2 && !Number.isNaN(temp2)) return next()
+                        let msg = sessiontoarr(session2, binding?.aid)
+                        let result = await what.exec_what({ ...this, fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([msg, y])] })
+                        if (!what.to_bool(result)) return next()
                         clearTimeout(timeout)
-                        res(temp)
+                        res(msg)
                         dispose()
                     }, true)
                 )
@@ -217,126 +225,160 @@ const run_what = async (code : string, session : Session, ctx : Context) => {
             null
         ),
 /*
-        getuser: async (x : any) => {
-            let user : any = await session.bot.getUser(x)
+        getuser: async x => {
+            let user = await session.bot.getUser(x)
             return [
                 user.id, user.name, user.avatar,
             ]
         },
 */
-        outimg: (x : any) => void output.push(h.image(x)),
-        outaudio: (x : any) => void output.push(h.audio(x)),
-        outvideo: (x : any) => void output.push(h.video(x)),
-        outfile: (x : any) => void output.push(h.file(x)),
-        outquote: (x : any) => void output.push(h.quote(x)),
-        outat: (x : any) => void output.push(h.at(x)),
-        outimag: async (x : any) => void output.push(await imagify(ctx, x)),
-        outksq: async (x : any) => void output.push(await imagify(ctx, x, {
+        outimg: x => void output.push(h.image(what.to_string(x))),
+        outaudio: x => void output.push(h.audio(what.to_string(x))),
+        outvideo: x => void output.push(h.video(what.to_string(x))),
+        outfile: x => void output.push(h.file(what.to_string(x))),
+        outquote: x => void output.push(h.quote(what.to_string(x))),
+        outat: x => void output.push(h.at(what.to_string(x))),
+        outimag: async x => void output.push(await imagify(ctx, x)),
+        outksq: async x => void output.push(await imagify(ctx, x, {
             width: "max-content",
             "line-height": "1",
             "font": "32px Kreative Square",
             "white-space": "pre",
         })),
-        outsvg: async (x : any) => void output.push(await svglize(ctx, x)),
-        outhtml: async (x: any) => void output.push(await htmlize(ctx, formatting(x))),
+        outsvg: async x => void output.push(await svglize(ctx, x)),
+        outhtml: async x => void output.push(await htmlize(ctx, what.to_string(x))),
         nout: () => void output.pop(),
-        nouts: (x : any) => void output.splice(-x),
-        nsend: async (x : any) => await session.bot.deleteMessage(session.channelId, x),
+        nouts: x => void output.splice(-x),
+        nsend: async x => void await session.bot.deleteMessage(session.channelId, what.to_string(x)),
         send: async () => await session.send(output.pop()),
-        sends: async (x : any) => await session.send(output.splice(-x)),
-        sendsto: async (x : any, y : any) => await session.bot.sendMessage(x, output.splice(-y)),
+        sends: async x => await session.send(output.splice(-Math.trunc(what.to_number(x)))),
+        sendsto: async (x, y) => await session.bot.sendMessage(what.to_string(x), output.splice(-Math.trunc(what.to_number(y)))),
 /*
         panic: async () => {const d = ctx.before("send", () => {d(); return true})},
-        panics: async (x : any) => {const d = ctx.before("send", () => {
+        panics: async x => {const d = ctx.before("send", () => {
             if (!x--) d()
             return true
         })},
 */
-        cat: async (x : any) => await ctx.http.get(String(x), {responseType: "text"}),
+        cat: async x => await ctx.http.get(String(x), {responseType: "text"}),
         ca: async x => [...new Uint8Array(await ctx.http.get(String(x), { responseType: "arraybuffer" }))],
-        fetch: async (method: any, url: any, headers: any, data: any) => {
-            const resp = await ctx.http(url, {
-                method,
+        fetch: async (method, url, headers, data) => {
+            const resp = await ctx.http(what.to_string(url), {
+                method: what.to_string(method) as any,
                 headers: headersArrToObj(headers),
-                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Uint8Array.from(data, x => Math.trunc(what.to_number(x))) : data,
                 responseType: "text",
                 validateStatus: () => true,
                 redirect: "manual",
             })
             return [resp.status, resp.statusText, [...resp.headers], resp.data]
         },
-        fech: async (method: any, url: any, headers: any, data: any) => {
-            const resp = await ctx.http(url, {
-                method,
+        fech: async (method, url, headers, data) => {
+            const resp = await ctx.http(what.to_string(url), {
+                method: what.to_string(method) as any,
                 headers: headersArrToObj(headers),
-                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Buffer.from(data) : data,
+                data: typeof data === "number" ? String(data) : Array.isArray(data) ? Uint8Array.from(data, x => Math.trunc(what.to_number(x))) : data,
                 responseType: "arraybuffer",
                 validateStatus: () => true,
                 redirect: "manual",
             })
             return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
         },
-        reesc: (x : any) => escapeRegExp(x),
-        findmsg: async (
-            x : any,
-            s : any[][],
-            v : Record<string, any>,
-            o : (x : any) => void,
-        ) => {
+        findmsg: async function (x) {
             for await (let message of session.bot.getMessageIter(session.channelId)) {
-                let temp : any[] = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
-                let temp2 : any = await what.exec_what([...s.slice(0, -1), s.at(-1).concat([temp, x])], v, o)
-                if (temp2 || Number.isNaN(temp2)) return temp
+                let msg = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
+                let result = await what.exec_what({ ...this, fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([msg, x])] })
+                if (what.to_bool(result)) return msg
             }
             return null
         },
-        getmsg: async (x : any, y : any) => {
-            const message = await session.bot.getMessage(x || session.channelId, y)
+        getmsg: async (x, y) => {
+            const message = await session.bot.getMessage(what.to_string(x || session.channelId), what.to_string(y))
             return msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
         },
-        sleep: async (x : any) => void await new Promise((res) => setTimeout(res, x * 1000)),
-        notewc: async (x : any, y : any) => void await ctx.database.upsert("whatnoter", [{uid: x, public: y}], "uid"),
-        notewd: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, protected: x}], "uid"),
-        notewe: async (x : any) => void await ctx.database.upsert("whatnoter", [{uid: (await session.observeUser(["id"])).id, private: x}], "uid"),
-        noterc: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["public"]))[0]?.public ?? null,
-        noterd: async (x : any) => (await ctx.database.get("whatnoter", {uid: x}, ["protected"]))[0]?.protected ?? null,
-        notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
-        guildmem: async (x : any) => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
-        cmdset: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, code: x}], "name"),
-        cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
-        cmdsethelp: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, help: x}], "name"),
-        cmdseth: async (x : any, y : any) => void await ctx.database.upsert("whatcommands", [{name: y, h: x}], "name"),
-        cmddel: async (x : any) => void await ctx.database.remove("whatcommands", {name: x}),
-        cmdget: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["code"]))[0]?.code ?? null,
-        cmdgethelp: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["help"]))[0]?.help ?? null,
-        cmdgeth: async (x : any) => (await ctx.database.get("whatcommands", {name: x}, ["h"]))[0]?.h ?? null,
-        cmd: async (
-            x : any, y : any,
-            s : any[][],
-            v : Record<string, any>,
-            o : (x : any) => void,
-        ) => {
-            let temp : string = (await ctx.database.get("whatcommands", {name: y}, ["code"]))[0]?.code
-            if (temp == undefined) throw new Error("command not found")
-            ctx.emit(session, "whatlang/command", y, x, session)
-            return await what.exec_what([...s.slice(0, -1), s.at(-1).concat([x, temp])], { ...vars }, o) ?? null
+        sleep: async x => void await ctx.sleep(what.to_number(x) * 1000),
+        notewc: async (x, y) => {
+            if (typeof x === "number" && typeof y === "number") throw TypeError(FE`Ambiguous write of Number into public note; use a String instead`)
+            if (typeof x === "number") [x, y] = [y, x]
+            const uid = what.to_number(y)
+            if (!Number.isInteger(uid) || uid < 0 || uid > 0xffffffff) throw TypeError(FE`Invalid uid ${y} for writing public note`)
+            return void await ctx.database.upsert("whatnoter", [{uid, public: what.to_string(x)}], "uid")
         },
-        [Symbol.for("whatlang.dead_loop_check")]: dead_loop_check,
+        notewd: async x => void await ctx.database.upsert("whatnoter", [{uid: (session.user as User.Observed).id, protected: what.to_string(x)}], "uid"),
+        notewe: async x => void await ctx.database.upsert("whatnoter", [{uid: (session.user as User.Observed).id, private: what.to_string(x)}], "uid"),
+        noterc: async x => {
+            const uid = what.to_number(x)
+            if (!Number.isInteger(uid) || uid < 0 || uid > 0xffffffff) return
+            return (await ctx.database.get("whatnoter", {uid}, ["public"]))[0]?.public ?? null
+        },
+        noterd: async x => {
+            const uid = what.to_number(x)
+            if (!Number.isInteger(uid) || uid < 0 || uid > 0xffffffff) return
+            return (await ctx.database.get("whatnoter", {uid}, ["protected"]))[0]?.protected ?? null
+        },
+        notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
+        guildmem: async x => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
+        cmdset: async (x, y) => {
+            if (y == undefined) throw TypeError(FE`Invalid name ${y} for setting command code, expected String`)
+            return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), code: what.to_string(x ?? "")}], "name")
+        },
+        cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
+        cmdsethelp: async (x, y) => {
+            if (x == undefined) throw TypeError(FE`Invalid name ${y} for setting command long help, expected String`)
+            return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), help: what.to_string(x ?? "")}], "name")
+        },
+        cmdseth: async (x, y) => {
+            if (x == undefined) throw TypeError(FE`Invalid name ${y} for setting command short help, expected String`)
+            return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), h: what.to_string(x ?? "")}], "name")
+        },
+        cmddel: async x => {
+            if (x == undefined) return
+            return void await ctx.database.remove("whatcommands", {name: what.to_string(x)})
+        },
+        cmdget: async x => {
+            if (x == undefined) return null
+            return (await ctx.database.get("whatcommands", {name: what.to_string(x)}, ["code"]))[0]?.code ?? null
+        },
+        cmdgethelp: async x => {
+            if (x == undefined) return null
+            return (await ctx.database.get("whatcommands", {name: what.to_string(x)}, ["help"]))[0]?.help ?? null
+        },
+        cmdgeth: async x => {
+            if (x == undefined) return null
+            return (await ctx.database.get("whatcommands", {name: what.to_string(x)}, ["h"]))[0]?.h ?? null
+        },
+        cmd: async function (x, y) {
+            if (x == undefined) throw new TypeError(`Invalid name ${x} for running command, expected String`)
+            const name = what.to_string(y)
+            let code = (await ctx.database.get("whatcommands", {name}, ["code"]))[0]?.code
+            if (code == undefined) throw new Error("command not found")
+            ctx.emit(session, "whatlang/command", name, x, session)
+            return await what.exec_what({
+                ...this,
+                fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([x, code])],
+                var_dict: {},
+            }) ?? null
+        },
     }
-    await what.eval_what(code, [[]], { ...vars }, (x : any) => void output.push(h.text(x)))
+    await what.eval_what(code, {
+        fstack: [[]],
+        builtins,
+        var_dict: {},
+        output: x => void output.push(h.text(x)),
+        dead_loop_check,
+    })
         .finally(() => disp())
     return output
 }
-what.need_svo.push(..."prompt findmsg cmd".split(" "))
-const try_run_what = async (code : string, session : Session, ctx : Context) => {
+const try_run_what = async (code: string, session: Session, ctx: Context) => {
     try {return await run_what(code, session, ctx)}
     catch (e) {ctx.logger.debug("%o", e); return h.escape(String(e))}
 }
 
 
-export function apply(ctx : Context, config: Config) {
+export function apply(ctx: Context, config: Config) {
     ctx.model.extend("whatnoter", {
-        uid: "unsigned",
+        uid: "unsigned(4)",
         public: "text",
         protected: "text",
         private: "text",
@@ -402,13 +444,13 @@ export function apply(ctx : Context, config: Config) {
     ctx.middleware(async (session, next) => {
         if (session.stripped.hasAt && !session.stripped.atSelf) return next()
         if (!session.isDirect && session.resolve(config.requireAppel) && !session.stripped.appel) return next()
-        let content : string = h.unescape(session.stripped.content)
+        let content = h.unescape(session.stripped.content)
         if (content.startsWith("¿¿")) {
-            let wcmd : string = content.slice(2)
-            let space_pos : number = wcmd.match(/\s/)?.index ?? wcmd.length
-            let arg : string = wcmd.slice(1 + space_pos)
-            let name : string = wcmd.slice(0, space_pos)
-            let argv : Argv = Argv.parse(`whatcmd `)
+            let wcmd = content.slice(2)
+            let space_pos = wcmd.match(/\s/)?.index ?? wcmd.length
+            let arg = wcmd.slice(1 + space_pos)
+            let name = wcmd.slice(0, space_pos)
+            let argv = Argv.parse(`whatcmd `)
             argv.tokens.push({ inters: [], content: name, quoted: true, terminator: " " })
             // Workaround for https://github.com/koishijs/koishi/issues/1473
             argv.tokens.push({ inters: [], content: "", quoted: true, terminator: "" })
