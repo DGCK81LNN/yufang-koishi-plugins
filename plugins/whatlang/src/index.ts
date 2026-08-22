@@ -1,4 +1,4 @@
-import { Argv, Computed, Context, Schema, Session, h, escapeRegExp, Universal, makeArray, Channel, User } from 'koishi'
+import { Argv, Computed, Context, Schema, Session, h, Universal, makeArray, Channel, User } from 'koishi'
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
@@ -202,7 +202,7 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
                     .middleware(async (session2, next) => {
                         let [binding] = await ctx.database.get("binding", { platform: session2.platform, pid: session2.userId }, ["aid"])
                         let msg = sessiontoarr(session2, binding?.aid)
-                        let result = await what.exec_what({ ...this, fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([msg, y])] })
+                        let result = await what.exec_what({ ...this, fstack: [this.fstack.at(-1).concat([msg, y])] })
                         if (!what.to_bool(result)) return next()
                         clearTimeout(timeout)
                         res(msg)
@@ -260,8 +260,8 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
             return true
         })},
 */
-        cat: async x => await ctx.http.get(String(x), {responseType: "text"}),
-        ca: async x => [...new Uint8Array(await ctx.http.get(String(x), { responseType: "arraybuffer" }))],
+        cat: async x => await ctx.http.get(what.to_string(x), {responseType: "text"}),
+        ca: async x => [...new Uint8Array(await ctx.http.get(what.to_string(x), { responseType: "arraybuffer" }))],
         fetch: async (method, url, headers, data) => {
             const resp = await ctx.http(what.to_string(url), {
                 method: what.to_string(method) as any,
@@ -287,7 +287,7 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
         findmsg: async function (x) {
             for await (let message of session.bot.getMessageIter(session.channelId)) {
                 let msg = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
-                let result = await what.exec_what({ ...this, fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([msg, x])] })
+                let result = await what.exec_what({ ...this, fstack: [this.fstack.at(-1).concat([msg, x])] })
                 if (what.to_bool(result)) return msg
             }
             return null
@@ -355,7 +355,7 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
             ctx.emit(session, "whatlang/command", name, x, session)
             return await what.exec_what({
                 ...this,
-                fstack: [...this.fstack.slice(0, -1), this.fstack.at(-1).concat([x, code])],
+                fstack: [this.fstack.at(-1).concat([x, code])],
                 var_dict: {},
             }) ?? null
         },
