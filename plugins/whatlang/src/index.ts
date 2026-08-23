@@ -168,7 +168,10 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
             (last, n, i) => last + n + ((i + 1) % 7 ? " ".repeat(12 - n.length) : "\n"), ""
         ))),
         you: () => [
-            "WhatLang/2024 Environment/messaging Framework/koishi",
+            "WhatLang/2024",
+            `Interpreter/${what.version}`,
+            "Environment/messaging",
+            "Framework/koishi",
             ctx.config.youExtras,
             session.platform && `Platform/${session.platform}`,
             session.selfId && `Id/${session.selfId}`

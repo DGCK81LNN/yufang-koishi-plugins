@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-whatlang",
   "description": "WhatLang Koishi runtime",
-  "version": "0.2.20260823-rc.3",
+  "version": "0.2.20260823-rc.4",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -41,7 +41,7 @@
     "koishi-plugin-puppeteer": "^3.9.0"
   },
   "dependencies": {
-    "whatlang-interpreter": "^1.0.0-alpha.2"
+    "whatlang-interpreter": "^1.0.0-rc.3"
   },
   "koishi": {
     "description": {
