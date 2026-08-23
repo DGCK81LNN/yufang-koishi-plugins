@@ -375,7 +375,7 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
 }
 const try_run_what = async (code: string, session: Session, ctx: Context) => {
     try {return await run_what(code, session, ctx)}
-    catch (e) {ctx.logger.debug("%o", e); return h.escape(String(e))}
+    catch (e) {const m = what.is_what_value(e) ? what.to_string(e) : String(e); ctx.logger.debug("%s", m); return h.text(m)}
 }
 
 
