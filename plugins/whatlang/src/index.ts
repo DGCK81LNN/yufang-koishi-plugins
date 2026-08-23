@@ -409,14 +409,10 @@ export function apply(ctx: Context, config: Config) {
         ctx.cache.delete(`whatlang_members_${session.gid}`, session.userId)
     })
 
-    ctx.command("whatlang <code:text>")
-/*
-        .example(h.escape("¿ `Hello, world! `"))
-        .example(h.escape("¿ 10 range@ (2 + 2 pow@ 1 +.` `)#"))
-        .example(h.escape("¿ 0x=_ 10n=_ 1.:{` `:x^+.\\x=_n^1-n=}"))
-        .example(h.escape('¿ (http://spiderbuf.cn) link= (/s05)+ cat@ [((?<=<img.*?src=").*?(?=".*?>))g]match@ (link^ \+ outimg@send@)#'))
-*/
+    ctx.command("whatlang <code:text>", { strictOptions: true, captureQuote: false })
         .action(({ session }, code) => {
+            if (!code && session.quote) code = h.unescape(session.quote.content)
+            if (!code) return
             ctx.emit(session, "whatlang/run", code, session)
             return try_run_what(code, session, ctx)
         })
