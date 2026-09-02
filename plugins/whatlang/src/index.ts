@@ -1,4 +1,4 @@
-import { Argv, Computed, Context, Schema, Session, h, Universal, makeArray, Channel, User } from 'koishi'
+import { Argv, Computed, Context, Schema, Session, h, Universal, makeArray, Channel, User, HTTP } from 'koishi'
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
 import { } from '@koishijs/cache'
@@ -81,7 +81,7 @@ async function getMemberList(session: Session, gid: string, ctx: Context) {
 function FE(segs: readonly string[], ...values: what.WhatValue[]) {
     return String.raw(
         { raw: segs },
-        ...values.map(x => what.formatting(x, { depth: 1, maxArrayLength: 4, maxStringLength: 50 })),
+        ...values.map(x => what.formatting(x, { depth: 1, maxArrayLength: 4, maxStringLength: 80 })),
     )
 }
 
@@ -153,6 +153,18 @@ function headersArrToObj(pairs: what.WhatValue) {
         else headers[key] = value
     }
     return headers
+}
+const handleHttpError = (verb: string, url: string) => (err: HTTP.Error) => {
+    if (err.response) {
+        throw new TypeError(FE`HTTP error ${err.response.status} ${err.response.statusText} when getting ${url}`)
+    }
+    const e = err?.cause as Error & { cause?: NodeJS.ErrnoException }
+    let msg = e?.cause?.message ?? e?.message ?? err?.message
+    // https://github.com/cordiverse/http/blob/67cbbbba65a3010be40e82715c74541f5ec9636b/packages/core/src/index.ts#L260
+    if (msg.startsWith("Invalid URL: ")) msg = "Invalid URL"
+    throw new TypeError(
+        `Failed to ${verb} ${FE`${url}`}${msg ? `: ${msg}` : ""}`,
+    )
 }
 const run_what = async (code: string, session: Session, ctx: Context) => {
     let output: (h | string)[] = []
@@ -263,28 +275,39 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
             return true
         })},
 */
-        cat: async x => await ctx.http.get(what.to_string(x), {responseType: "text"}),
-        ca: async x => [...new Uint8Array(await ctx.http.get(what.to_string(x), { responseType: "arraybuffer" }))],
+        cat: async url => {
+            url = what.to_string(url)
+            return await ctx.http.get(url, { responseType: "text" })
+                .catch(handleHttpError("get", url))
+        },
+        ca: async url => {
+            url = what.to_string(url)
+            const data = await ctx.http.get(url, { responseType: "arraybuffer" })
+                .catch(handleHttpError("get", url))
+            return [...new Uint8Array(data)]
+        },
         fetch: async (method, url, headers, data) => {
-            const resp = await ctx.http(what.to_string(url), {
+            url = what.to_string(url)
+            const resp = await ctx.http(url, {
                 method: what.to_string(method) as any,
                 headers: headersArrToObj(headers),
                 data: typeof data === "number" ? String(data) : Array.isArray(data) ? Uint8Array.from(data, x => Math.trunc(what.to_number(x))) : data,
                 responseType: "text",
                 validateStatus: () => true,
                 redirect: "manual",
-            })
+            }).catch(handleHttpError("fetch", url))
             return [resp.status, resp.statusText, [...resp.headers], resp.data]
         },
         fech: async (method, url, headers, data) => {
-            const resp = await ctx.http(what.to_string(url), {
+            url = what.to_string(url)
+            const resp = await ctx.http(url, {
                 method: what.to_string(method) as any,
                 headers: headersArrToObj(headers),
                 data: typeof data === "number" ? String(data) : Array.isArray(data) ? Uint8Array.from(data, x => Math.trunc(what.to_number(x))) : data,
                 responseType: "arraybuffer",
                 validateStatus: () => true,
                 redirect: "manual",
-            })
+            }).catch(handleHttpError("fetch", url))
             return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
         },
         findmsg: async function (x) {
