@@ -19,7 +19,7 @@ export const Config = Schema.object({
     ),
     interpolate: Schema.boolean().default(false).description("启用“`$¿{ }`”插值。"),
     interpolateCmd: Schema.boolean().default(false).description("启用“`$¿( )`”What Commands 插值。"),
-    youExtras: Schema.string().default("").description("在 you@ 字符串中添加的额外信息。"),
+    youExtras: Schema.string().default("").description("在 you@ 字符串中添加的额外信息。惯例为 `Brand/` 后加bot名称，不应包含空格。"),
 })
 export const inject = ["database", "cache", "puppeteer"]
 
