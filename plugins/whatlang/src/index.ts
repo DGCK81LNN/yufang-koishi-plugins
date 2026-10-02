@@ -445,7 +445,7 @@ export function apply(ctx: Context, config: Config) {
             arg ||= ""
             if (root === true && session.quote?.content) {
                 if (arg) arg += "\f"
-                arg += "\f" + h.unescape(session.quote.content)
+                arg += h.unescape(session.quote.content)
             }
             const code = `"${arg.replace(/(["\\])/g, "\\$1")}" "${name.replace(/(["\\])/g, "\\$1")}" cmd@`
             ctx.emit(session, "whatlang/run", code, session)
