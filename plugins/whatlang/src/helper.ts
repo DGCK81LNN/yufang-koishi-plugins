@@ -270,7 +270,7 @@ const help_record : Record<string, string> = ({
         `返回群成员列表。`
         `抽奖 time 😋`
     ()),
-    "cmd cmdset cmdseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall": (S
+    "cmd cmdset cmdseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall cmdadda cmddela cmdgeta": (S
         `有见过在QQ里写指令吗？`
         `放心，这只是 command 的缩写，我不可能把 cmd 真放这里面的。`
         `调用方式是 '¿¿<name> <arg...>'。参数解析？自己去做啊（ 不`
@@ -279,10 +279,13 @@ const help_record : Record<string, string> = ({
         `    cmdseth 弹出二值，以顶值为名设置 What Commands 对应指令的短描述为底值`
         `    cmdsethelp 弹出二值，以顶值为名设置 What Commands 对应指令的长帮助信息为底值`
         `    cmdget 弹出，以该值为名获取 What Commands 对应指令的代码`
-        `    cmdgeth 弹出，以该值为名获取 What Commands 对应指令的短描述`
-        `    cmdgethelp 弹出，以该值为名获取 What Commands 对应指令的长帮助信息`
+        `    cmdgeth cmdgethelp...`
         `    cmddel 弹出，以该值为名删除 What Commands 的对应指令`
         `    cmdall 返回所有 What Commands 名`
+        `    cmdadda cmddela 弹出二值，以底值为属性名，顶值为指令名，为对应指令添加/删除属性`
+        `    cmdgeta 弹出，以该值为名获取 What Commands 对应指令的属性列表`
+        `指令属性：`
+        `    rawarg 通过消息调用时不对参数解转义，直接接收原始XML内容`
     ()),
 })
 export const help_list : string[] = (Object.keys(help_record)

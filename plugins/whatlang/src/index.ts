@@ -46,11 +46,14 @@ export interface WhatTimer {
     time: number,
     code: string,
 }
+export const WhatCommandsAttr = ["rawarg"] as const
+export type WhatCommandsAttr = typeof WhatCommandsAttr[number]
 export interface WhatCommands {
     name: string,
     help: string,
     h: string,
     code: string,
+    a: Record<WhatCommandsAttr, boolean>,
 }
 
 declare module '@koishijs/cache' {
@@ -166,7 +169,7 @@ const handleHttpError = (verb: string, url: string) => (err: HTTP.Error) => {
         `Failed to ${verb} ${FE`${url}`}${msg ? `: ${msg}` : ""}`,
     )
 }
-const run_what = async (code: string, session: Session, ctx: Context) => {
+const run_what = async (code: string, session: Session, ctx: Context, stack: what.WhatValue[] = []) => {
     let output: (h | string)[] = []
     let time = Date.now()
     let disp = ctx.setInterval(() => time = Date.now(), 100)
@@ -389,9 +392,35 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
                 var_dict: {},
             }) ?? null
         },
+        cmdadda: async (x, y) => {
+            const attrs = makeArray(x)
+            if (!attrs.every(x => WhatCommandsAttr.includes(x as any))) throw TypeError(FE`Invalid name ${x} for adding command attribute`)
+            const name = what.to_string(y)
+            const { matched } = await ctx.database.set("whatcommands", { name }, {
+                a: Object.fromEntries(attrs.map(attr => [attr, true])),
+            })
+            if (!matched) throw new TypeError(`Cannot add attributes for non-existent command ${name}`)
+            return undefined
+        },
+        cmddela: async (x, y) => {
+            const attrs = makeArray(x)
+            if (!attrs.every(x => WhatCommandsAttr.includes(x as any))) throw TypeError(FE`Invalid name ${x} for deleting command attribute`)
+            const name = what.to_string(y)
+            const { matched } = await ctx.database.set("whatcommands", { name }, {
+                a: Object.fromEntries(attrs.map(attr => [attr, false])),
+            })
+            if (!matched) throw new TypeError(`Cannot delete attributes for non-existent command ${name}`)
+            return undefined
+        },
+        cmdgeta: async x => {
+            const name = what.to_string(x)
+            const { a } = (await ctx.database.get("whatcommands", { name }, ["a"]))[0] ?? {}
+            if (!a) return null
+            return Object.entries(a).filter(([_, v]) => v).map(([k, _]) => k)
+        },
     }
     await what.eval_what(code, {
-        fstack: [[]],
+        fstack: [stack],
         builtins,
         var_dict: {},
         output: x => void output.push(h.text(x)),
@@ -400,10 +429,13 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
         .finally(() => disp())
     return output
 }
-const try_run_what = async (code: string, session: Session, ctx: Context) => {
-    try {return await run_what(code, session, ctx)}
-    catch (e) {const m = what.is_what_value(e) ? what.to_string(e) : String(e); ctx.logger.debug("%s", m); return h.text(m)}
+const show_error = (ctx: Context, e: unknown) => {
+    const m = what.is_what_value(e) ? what.to_string(e) : String(e)
+    ctx.logger.debug("%s", m)
+    return [m]
 }
+const try_run_what = async (code: string, session: Session, ctx: Context, stack?: what.WhatValue[]) =>
+    run_what(code, session, ctx, stack).catch(e => show_error(ctx, e))
 
 
 export function apply(ctx: Context, config: Config) {
@@ -413,16 +445,17 @@ export function apply(ctx: Context, config: Config) {
         protected: "text",
         private: "text",
     }, {primary: "uid"})
-    ctx.model.extend("whattimer", {
+    /*ctx.model.extend("whattimer", {
         name: "string",
         time: "unsigned",
         code: "text",
-    }, {primary: "name"})
+    }, {primary: "name"})*/
     ctx.model.extend("whatcommands", {
         name: "string",
         help: "text",
         h: "text",
         code: "text",
+        ...Object.fromEntries(WhatCommandsAttr.map(attr => [`a.${attr}`, { type: "boolean", initial: false }])),
     }, {primary: "name"})
 
     //yes I stole it from waifu shut up
@@ -443,17 +476,24 @@ export function apply(ctx: Context, config: Config) {
             ctx.emit(session, "whatlang/run", code, session)
             return try_run_what(code, session, ctx)
         })
-    ctx.command("whatcmd <name> <arg:text>", { strictOptions: true, captureQuote: false })
-        .action(({ root, session }, name, arg) => {
+    ctx.command("whatcmd <name> <arg:elements>", { strictOptions: true, captureQuote: false })
+        .action(async ({ root, session }, name, argEls) => {
             name ||= ""
-            arg ||= ""
+            let arg = argEls?.join("")
             if (root === true && session.quote?.content) {
                 if (arg) arg += "\f"
-                arg += h.unescape(session.quote.content)
+                arg += session.quote.content
             }
-            const code = `"${arg.replace(/(["\\])/g, "\\$1")}" "${name.replace(/(["\\])/g, "\\$1")}" cmd@`
-            ctx.emit(session, "whatlang/run", code, session)
-            return try_run_what(code, session, ctx)
+            try {
+                let [entry] = (await ctx.database.get("whatcommands", {name}, ["code", "a.rawarg"]))
+                if (!entry) throw new Error("command not found")
+                const { code, a: { rawarg } } = entry
+                if (!rawarg) arg = h.unescape(arg)
+                ctx.emit(session, "whatlang/command", name, arg, session)
+                return await run_what(code, session, ctx, [arg])
+            } catch (e) {
+                return show_error(ctx, e)
+            }
         })
 
     ctx.i18n.define("zh-CN", "commands", {
@@ -470,23 +510,40 @@ export function apply(ctx: Context, config: Config) {
     ctx.middleware(async (session, next) => {
         if (session.stripped.hasAt && !session.stripped.atSelf) return next()
         if (!session.isDirect && session.resolve(config.requireAppel) && !session.stripped.appel) return next()
-        let content = h.unescape(session.stripped.content)
-        if (content.startsWith("¿¿")) {
-            let wcmd = content.slice(2)
-            let space_pos = wcmd.match(/\s/)?.index ?? wcmd.length
-            let arg = wcmd.slice(1 + space_pos)
-            let name = wcmd.slice(0, space_pos)
-            let argv = Argv.parse(`whatcmd `)
-            argv.tokens.push({ inters: [], content: name, quoted: true, terminator: " " })
-            // Workaround for https://github.com/koishijs/koishi/issues/1473
-            argv.tokens.push({ inters: [], content: "", quoted: true, terminator: "" })
-            argv.tokens.push(...Argv.parse(h.escape(arg)).tokens.map(token => ({ ...token, quoted: true })))
+        if (session.stripped.content.startsWith("¿¿")) {
+            const els = h.parse(session.stripped.content.slice(2))
+            let name = "", arg = ""
+            for (let i = 0; i < els.length; i++) {
+                if (els[i].type === "text") {
+                    const content: string = els[i].attrs.content
+                    const match = content.match(/\s/)
+                    if (match) {
+                        name += content.slice(0, match.index)
+                        const rest = content.slice(match.index + match[0].length)
+                        arg = h.escape(rest) + els.slice(i + 1).join("")
+                        break
+                    }
+                    name += content
+                } else name += h.unescape(els[i].toString())
+            }
+
+            const argTokens = Argv.parse(arg).tokens.map(token => ({ ...token, quoted: true }))
             if (session.quote?.content) {
-                if (argv.tokens.length > 3) argv.tokens.at(-1).terminator += "\f"
-                argv.tokens.push({ inters: [], content: session.quote.content, quoted: true, terminator: "" })
+                if (argTokens.length) argTokens.at(-1).terminator += "\f"
+                argTokens.push({ inters: [], content: session.quote.content, quoted: true, terminator: "" })
+            }
+            const argv = {
+                name: "whatcmd",
+                tokens: [
+                    { inters: [], content: name, quoted: true, terminator: " " },
+                    { inters: [], content: "", quoted: true, terminator: "" }, // Workaround for https://github.com/koishijs/koishi/issues/1473
+                    ...argTokens,
+                ],
+                rest: "",
             }
             return session.execute(argv)
-        } else if (content.startsWith("¿")) {
+        } else if (session.stripped.content.startsWith("¿")) {
+            const content = h.unescape(session.stripped.content)
             ctx.emit(session, "whatlang/run", content.slice(1), session)
             return await try_run_what(content.slice(1), session, ctx)
         }
