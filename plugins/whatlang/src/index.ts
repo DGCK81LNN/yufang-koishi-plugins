@@ -350,12 +350,16 @@ const run_what = async (code: string, session: Session, ctx: Context) => {
         },
         cmdall: async () => (await ctx.database.get("whatcommands", {}, ["name"])).map(i => i.name),
         cmdsethelp: async (x, y) => {
-            if (x == undefined) throw TypeError(FE`Invalid name ${y} for setting command long help, expected String`)
-            return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), help: what.to_string(x ?? "")}], "name")
+            if (y == undefined) throw TypeError(FE`Invalid name ${y} for setting command long help, expected String`)
+            const { matched } = await ctx.database.set("whatcommands", { name: what.to_string(y) }, { help: what.to_string(x ?? "") })
+            if (!matched) throw new TypeError(`Cannot set long help for non-existent command ${what.to_string(y)}`)
+            return undefined
         },
         cmdseth: async (x, y) => {
-            if (x == undefined) throw TypeError(FE`Invalid name ${y} for setting command short help, expected String`)
-            return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), h: what.to_string(x ?? "")}], "name")
+            if (y == undefined) throw TypeError(FE`Invalid name ${y} for setting command short help, expected String`)
+            const { matched } = await ctx.database.set("whatcommands", { name: what.to_string(y) }, { h: what.to_string(x ?? "") })
+            if (!matched) throw new TypeError(`Cannot set short help for non-existent command ${what.to_string(y)}`)
+            return undefined
         },
         cmddel: async x => {
             if (x == undefined) return
