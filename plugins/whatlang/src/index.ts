@@ -1,7 +1,7 @@
 import { Argv, Computed, Context, Schema, Session, h, Universal, makeArray, Channel, User, HTTP } from 'koishi'
 import * as what from 'whatlang-interpreter'
 import { help, help_list } from './helper'
-import { } from '@koishijs/cache'
+import { } from 'koishi-plugin-guild-members'
 import { } from 'koishi-plugin-puppeteer'
 import type { ElementHandle, Page } from 'puppeteer-core'
 
@@ -21,7 +21,10 @@ export const Config = Schema.object({
     interpolateCmd: Schema.boolean().default(false).description("启用“`$¿( )`”What Commands 插值。"),
     youExtras: Schema.string().default("").description("在 you@ 字符串中添加的额外信息。惯例为 `Brand/` 后加bot名称，不应包含空格。"),
 })
-export const inject = ["database", "cache", "puppeteer"]
+export const inject = {
+    required: ["database", "puppeteer"],
+    optional: ["guildMembers"],
+}
 
 
 declare module 'koishi' {
@@ -56,30 +59,6 @@ export interface WhatCommands {
     a: Record<WhatCommandsAttr, boolean>,
 }
 
-declare module '@koishijs/cache' {
-    interface Tables {
-        [key: `whatlang_members_${string}`]: Universal.GuildMember,
-    }
-}
-
-
-async function getMemberList(session: Session, gid: string, ctx: Context) {
-    let result: Universal.GuildMember[]
-    try {
-        const { data, next } = await session.bot.getGuildMemberList(session.guildId)
-        result = data
-        if (next) {
-            const { data } = await session.bot.getGuildMemberList(session.guildId, next)
-            result.push(...data)
-        }
-    } catch { }
-    if (!result?.length) {
-        for await (const value of ctx.cache.values(`whatlang_members_${gid}`)) {
-            result.push(value)
-        }
-    }
-    return result
-}
 
 function FE(segs: readonly string[], ...values: what.WhatValue[]) {
     return String.raw(
@@ -313,10 +292,10 @@ const run_what = async (code: string, session: Session, ctx: Context, stack: wha
             }).catch(handleHttpError("fetch", url))
             return [resp.status, resp.statusText, [...resp.headers], [...new Uint8Array(resp.data)]]
         },
-        findmsg: async function (x) {
-            for await (let message of session.bot.getMessageIter(session.channelId)) {
+        findmsg: async function (x, y) {
+            for await (let message of session.bot.getMessageIter(x == undefined ? session.channelId : what.to_string(x))) {
                 let msg = msgtoarr({ ...message, message }, await ctx.database.getUser(session.platform, message.user.id).catch(() => null))
-                let result = await what.exec_what({ ...this, fstack: [this.fstack.at(-1).concat([msg, x])] })
+                let result = await what.exec_what({ ...this, fstack: [this.fstack.at(-1).concat([msg, y])] })
                 if (what.to_bool(result)) return msg
             }
             return null
@@ -346,7 +325,22 @@ const run_what = async (code: string, session: Session, ctx: Context, stack: wha
             return (await ctx.database.get("whatnoter", {uid}, ["protected"]))[0]?.protected ?? null
         },
         notere: async () => (await ctx.database.get("whatnoter", {uid: (await session.observeUser(["id"])).id}, ["private"]))[0]?.private ?? null,
-        guildmem: async x => (await getMemberList(session, session.platform + ":" + x, ctx)).map(i => [i.user.name, i.user.id]),
+        guildmem: async x => {
+            const guildId = x == undefined ? session.guildId : what.to_string(x)
+            try {
+                const result: what.WhatValue[][] = []
+                for await (const member of session.bot.getGuildMemberIter(guildId))
+                    result.push([
+                        member.user.name || undefined,
+                        member.user.id || undefined,
+                        member.nick || member.user.nick || undefined,
+                    ])
+                return result
+            } catch {
+                return (await ctx.guildMembers.list(session.platform, guildId, ["userId", "name", "nick"]))
+                    .map(m => [m.name || undefined, m.userId || undefined, m.nick || undefined])
+            }
+        },
         cmdset: async (x, y) => {
             if (y == undefined) throw TypeError(FE`Invalid name ${y} for setting command code, expected String`)
             return void await ctx.database.upsert("whatcommands", [{name: what.to_string(y), code: what.to_string(x ?? "")}], "name")
@@ -457,17 +451,6 @@ export function apply(ctx: Context, config: Config) {
         code: "text",
         ...Object.fromEntries(WhatCommandsAttr.map(attr => [`a.${attr}`, { type: "boolean", initial: false }])),
     }, {primary: "name"})
-
-    //yes I stole it from waifu shut up
-    ctx.guild().on('message-created', async (session) => {
-        if (!session.userId) return
-        const member : Universal.GuildMember = session.event.member || { user: session.event.user }
-        await ctx.cache.set(`whatlang_members_${session.gid}`, session.userId, member, 172800000)
-    })
-    ctx.on('guild-member-removed', (session) => {
-        if (!session.userId) return
-        ctx.cache.delete(`whatlang_members_${session.gid}`, session.userId)
-    })
 
     ctx.command("whatlang <code:text>", { strictOptions: true, captureQuote: false })
         .action(({ session }, code) => {

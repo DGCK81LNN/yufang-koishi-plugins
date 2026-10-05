@@ -247,8 +247,8 @@ const help_record : Record<string, string> = ({
     ()),
     "findmsg getmsg": (S
         `仅对前文管用的消息获取。参见 me@。`
-        `    findmsg 弹出，对顶值运行 @ 指令，_`
-        `若栈顶为真值则返回该消息的信息，否则继续获取消息。`
+        `    findmsg 弹出二值，对于ID为底值（undefined默认当前频道）的频道内最近每条消息，复制当前栈，_`
+        `压入该消息的信息，对顶值运行 @ 指令，若栈顶为真值则返回该消息的信息，否则继续获取消息。`
         `    getmsg 弹出二值，在ID为底值的频道内获取ID为顶值的消息，返回该消息的信息。`
     ()),
     sleep: (S
@@ -267,7 +267,8 @@ const help_record : Record<string, string> = ({
         `    notere 读取自己的 private note`
     ()),
     guildmem: (S
-        `返回群成员列表。`
+        `弹出，返回该群的群成员列表。undefined时默认当前群。`
+        `每项具体内容：[用户名 用户ID 昵称]`
         `抽奖 time 😋`
     ()),
     "cmd cmdset cmdseth cmdsethelp cmdget cmdgeth cmdgethelp cmddel cmdall cmdadda cmddela cmdgeta": (S

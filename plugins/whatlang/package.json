@@ -50,8 +50,10 @@
     "service": {
       "required": [
         "database",
-        "cache",
         "puppeteer"
+      ],
+      "optional": [
+        "guildMembers"
       ]
     }
   }
