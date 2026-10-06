@@ -335,11 +335,12 @@ const run_what = async (code: string, session: Session, ctx: Context, stack: wha
                         member.user.id || undefined,
                         member.nick || member.user.nick || undefined,
                     ])
-                return result
-            } catch {
-                return (await ctx.guildMembers.list(session.platform, guildId, ["userId", "name", "nick"]))
-                    .map(m => [m.name || undefined, m.userId || undefined, m.nick || undefined])
+                if (result.length) return result
+            } catch (err) {
+                ctx.logger.debug("%o", err)
             }
+            return (await ctx.guildMembers.list(session.platform, guildId, ["userId", "name", "nick"]))
+                .map(m => [m.name || undefined, m.userId || undefined, m.nick || undefined])
         },
         cmdset: async (x, y) => {
             if (y == undefined) throw TypeError(FE`Invalid name ${y} for setting command code, expected String`)

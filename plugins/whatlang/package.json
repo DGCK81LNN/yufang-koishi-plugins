@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-whatlang",
   "description": "WhatLang Koishi runtime",
-  "version": "0.2.20261002",
+  "version": "0.2.20261006-alpha.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
