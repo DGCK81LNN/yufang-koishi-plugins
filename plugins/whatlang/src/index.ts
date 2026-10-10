@@ -460,10 +460,10 @@ export function apply(ctx: Context, config: Config) {
             ctx.emit(session, "whatlang/run", code, session)
             return try_run_what(code, session, ctx)
         })
-    ctx.command("whatcmd <name> <arg:elements>", { strictOptions: true, captureQuote: false })
+    ctx.command("whatcmd <name> [arg:elements]", { strictOptions: true, captureQuote: false })
         .action(async ({ root, session }, name, argEls) => {
             name ||= ""
-            let arg = argEls?.join("")
+            let arg = argEls?.join("") ?? ""
             if (root === true && session.quote?.content) {
                 if (arg) arg += "\f"
                 arg += session.quote.content
